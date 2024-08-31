@@ -8,9 +8,7 @@ import (
 )
 
 var (
-	// TODO: Find a better way of constructing the error type.
-	// Seemingly you can't just get the type of a variable.
-	errType = reflect.TypeOf(func() error { return nil }).Out(0)
+	errType = reflect.TypeOf((*error)(nil)).Elem()
 )
 
 // CompileFn defines the function type that will be called to generate a WalkFn when a value is encountered while
@@ -38,14 +36,14 @@ func (w *Register[Ctx]) RegisterTypeFn(fn any) error {
 		return fmt.Errorf("%T is not a function", fnType)
 	}
 
-	var zeroCtx Ctx
+	ctxType := reflect.TypeOf((*Ctx)(nil)).Elem()
 	isWalkFn := fnType.NumOut() == 1 &&
 		fnType.Out(0) == errType &&
 		fnType.NumIn() == 2 &&
-		fnType.In(0) == reflect.TypeOf(zeroCtx) &&
+		fnType.In(0) == ctxType &&
 		(fnType.In(1).Kind() == reflect.Ptr || fnType.In(1).Kind() == reflect.UnsafePointer)
 	if !isWalkFn {
-		return fmt.Errorf("%T is not a valid walkFn - it must be a func(%T, *ArbitraryType) error", fn, zeroCtx)
+		return fmt.Errorf("%T is not a valid walkFn - it must be a func(%s, *ArbitraryType) error", fn, ctxType.String())
 	}
 
 	_, fp := g_reflect.TypeAndPtrOf(fn)

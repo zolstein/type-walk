@@ -45,6 +45,15 @@ func TestRegisterTypeFn(t *testing.T) {
 	registerTypeFnHelper(t, make(chan int))
 	registerTypeFnHelper(t, (func(int) error)(nil))
 	registerTypeFnHelper(t, struct{ a int }{a: 123})
+
+	// Context types
+	registerCtxTypeFnHelper[struct{}](t)
+	registerCtxTypeFnHelper[any](t)
+	registerCtxTypeFnHelper[error](t)
+	registerCtxTypeFnHelper[interface{ Func() }](t)
+
+	// Invalid functions
+	registerTypeFnErrHelper(t, func() error { return nil })
 }
 
 func registerTypeFnHelper[V any](t *testing.T, v V) {
@@ -67,6 +76,22 @@ func registerTypeFnHelper[V any](t *testing.T, v V) {
 		err = typeWalker.Walk(&ctx, &v)
 		require.NoError(t, err)
 		assert.Equal(t, []V{v, v}, ctx)
+	})
+}
+
+func registerCtxTypeFnHelper[Ctx any](t *testing.T) {
+	t.Run(fmt.Sprintf("Context(%s)", reflect.TypeOf((*Ctx)(nil)).Elem().String()), func(t *testing.T) {
+		register := tw.NewRegister[Ctx]()
+		err := register.RegisterTypeFn(func(ctx Ctx, val *struct{}) error { return nil })
+		require.NoError(t, err)
+	})
+}
+
+func registerTypeFnErrHelper(t *testing.T, invalid any) {
+	t.Run(fmt.Sprintf("Invalid(%T)", invalid), func(t *testing.T) {
+		register := tw.NewRegister[struct{}]()
+		err := register.RegisterTypeFn(invalid)
+		require.EqualError(t, err, fmt.Sprintf("%T is not a valid WalkFn - it must be a func(struct {}, *ArbitraryType) error", invalid))
 	})
 }
 
