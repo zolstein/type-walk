@@ -103,23 +103,23 @@ func BenchmarkSimpleJsonSerialize(b *testing.B) {
 
 	register := tw.NewRegister[*bytes.Buffer]()
 	register.RegisterCompileIntFn(func(r reflect.Type) tw.WalkFn[*bytes.Buffer, int] {
-		return func(ctx *bytes.Buffer, i *int) error {
+		return func(ctx *bytes.Buffer, i tw.Int) error {
 			intBuf = intBuf[:0]
-			intBuf = strconv.AppendInt(intBuf, int64(*i), 10)
+			intBuf = strconv.AppendInt(intBuf, int64(i.Get()), 10)
 			bb.Write(intBuf)
 			return nil
 		}
 	})
 	register.RegisterCompileStringFn(func(r reflect.Type) tw.WalkFn[*bytes.Buffer, string] {
-		return func(ctx *bytes.Buffer, s *string) error {
+		return func(ctx *bytes.Buffer, s tw.String) error {
 			bb.WriteRune('"')
-			bb.WriteString(*s)
+			bb.WriteString(s.Get())
 			bb.WriteRune('"')
 			return nil
 		}
 	})
 	register.RegisterCompileSliceFn(func(r reflect.Type) (tw.SliceWalkFn[*bytes.Buffer], error) {
-		return func(ctx *bytes.Buffer, s tw.SliceWalker[*bytes.Buffer]) error {
+		return func(ctx *bytes.Buffer, s tw.Slice[*bytes.Buffer]) error {
 			bb.WriteRune('[')
 			for i := range s.Len() {
 				if i > 0 {
@@ -134,16 +134,13 @@ func BenchmarkSimpleJsonSerialize(b *testing.B) {
 			return nil
 		}, nil
 	})
-	register.RegisterCompileStructFn(func(r reflect.Type, sfr tw.StructFieldRegister[*bytes.Buffer]) (tw.StructWalkFn[*bytes.Buffer], error) {
+	register.RegisterCompileStructFn(func(r reflect.Type, sfr tw.StructFieldRegister) (tw.StructWalkFn[*bytes.Buffer], error) {
 		fields := make([]reflect.StructField, r.NumField())
 		for i := range fields {
-			i, err := sfr.RegisterField(i)
-			if err != nil {
-				return nil, err
-			}
-			fields[i] = r.Field(i)
+			idx := sfr.RegisterField(i)
+			fields[idx] = r.Field(i)
 		}
-		return func(ctx *bytes.Buffer, s tw.StructFieldWalker[*bytes.Buffer]) error {
+		return func(ctx *bytes.Buffer, s tw.Struct[*bytes.Buffer]) error {
 			bb.WriteRune('{')
 			for i := range s.NumFields() {
 				if i > 0 {
@@ -163,7 +160,7 @@ func BenchmarkSimpleJsonSerialize(b *testing.B) {
 		}, nil
 	})
 	register.RegisterCompilePtrFn(func(r reflect.Type) (tw.PtrWalkFn[*bytes.Buffer], error) {
-		return func(ctx *bytes.Buffer, p tw.PtrWalker[*bytes.Buffer]) error {
+		return func(ctx *bytes.Buffer, p tw.Ptr[*bytes.Buffer]) error {
 			if p.IsNil() {
 				bb.WriteString("null")
 			}
@@ -196,9 +193,9 @@ func BenchmarkSimpleJsonSerialize(b *testing.B) {
 
 func randString(length int) string {
 	var letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-	bytes := make([]byte, rand.N(length))
-	for i := range bytes {
-		bytes[i] = letters[rand.N(len(letters))]
+	bs := make([]byte, rand.N(length))
+	for i := range bs {
+		bs[i] = letters[rand.N(len(letters))]
 	}
-	return string(bytes)
+	return string(bs)
 }
