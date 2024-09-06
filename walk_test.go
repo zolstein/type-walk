@@ -398,7 +398,93 @@ func TestRegisterCompilePtrFn(t *testing.T) {
 			require.Equal(t, `ptr(ptr("abc"))`, sb.String())
 		}
 	}
+}
 
+func TestRegisterCompileMapFn(t *testing.T) {
+
+	register := tw.NewRegister[*strings.Builder]()
+	tw.RegisterTypeFn(register, func(ctx *strings.Builder, s tw.String) error {
+		_, err := fmt.Fprintf(ctx, `"%s"`, s.Get())
+		return err
+	})
+
+	tw.RegisterTypeFn(register, func(ctx *strings.Builder, i tw.Int) error {
+		_, err := fmt.Fprintf(ctx, `%d`, i.Get())
+		return err
+	})
+
+	register.RegisterCompileMapFn(func(typ reflect.Type) (tw.MapWalkFn[*strings.Builder], error) {
+		return func(ctx *strings.Builder, m tw.Map[*strings.Builder]) error {
+			if m.IsNil() {
+				ctx.WriteString("null")
+				return nil
+			}
+			ctx.WriteRune('{')
+			iter := m.Iter()
+			i := 0
+			for iter.Next() {
+				if i > 0 {
+					ctx.WriteRune(',')
+				}
+				e := iter.Entry()
+				err := e.WalkKey(ctx)
+				if err != nil {
+					return err
+				}
+				ctx.WriteRune(':')
+				err = e.WalkValue(ctx)
+				if err != nil {
+					return err
+				}
+				i++
+			}
+			ctx.WriteRune('}')
+			return nil
+		}, nil
+	})
+
+	walker := tw.NewWalker[*strings.Builder](register)
+	typeWalker, err := tw.NewTypeWalker[*strings.Builder, map[string]int](walker)
+	require.NoError(t, err)
+
+	{
+		var sb strings.Builder
+		err = walker.Walk(&sb, (map[string]int)(nil))
+		require.NoError(t, err)
+		assert.Equal(t, `null`, sb.String())
+	}
+	{
+		var sb strings.Builder
+		err = walker.Walk(&sb, map[string]int{})
+		require.NoError(t, err)
+		assert.Equal(t, `{}`, sb.String())
+	}
+	{
+		var sb strings.Builder
+		err = walker.Walk(&sb, map[string]int{"abc": 123, "def": 456})
+		require.NoError(t, err)
+		// Use JSONEq because map iteration order is not guaranteed.
+		assert.JSONEq(t, `{"abc":123,"def":456}`, sb.String())
+	}
+	{
+		var sb strings.Builder
+		err = typeWalker.Walk(&sb, ptr[map[string]int](nil))
+		require.NoError(t, err)
+		assert.Equal(t, `null`, sb.String())
+	}
+	{
+		var sb strings.Builder
+		err = typeWalker.Walk(&sb, &map[string]int{})
+		require.NoError(t, err)
+		assert.Equal(t, `{}`, sb.String())
+	}
+	{
+		var sb strings.Builder
+		err = typeWalker.Walk(&sb, &map[string]int{"abc": 123, "def": 456})
+		require.NoError(t, err)
+		// Use JSONEq because map iteration order is not guaranteed.
+		assert.JSONEq(t, `{"abc":123,"def":456}`, sb.String())
+	}
 }
 
 func TestCompileRecursive(t *testing.T) {
@@ -496,6 +582,7 @@ func TestSettable(t *testing.T) {
 	settableArrayHelper(t)
 	settableStructHelper(t)
 	settablePtrHelper(t)
+	settableMapHelper(t)
 }
 
 func settableHelper[V any](t *testing.T, v V, newV V) {
@@ -542,25 +629,28 @@ func settableHelper[V any](t *testing.T, v V, newV V) {
 
 func settableSliceHelper(t *testing.T) {
 	t.Run("slice", func(t *testing.T) {
-		t.Run("fromInterface", func(t *testing.T) {
-			register := tw.NewRegister[struct{}]()
-			var savedChildren []tw.Arg[int]
-			tw.RegisterTypeFn(register, func(ctx struct{}, val tw.Arg[int]) error {
-				savedChildren = append(savedChildren, val)
-				return nil
-			})
-			register.RegisterCompileSliceFn(func(typ reflect.Type) (tw.SliceWalkFn[struct{}], error) {
-				return func(ctx struct{}, s tw.Slice[struct{}]) error {
-					for i := range s.Len() {
-						err := s.Walk(ctx, i)
-						if err != nil {
-							return err
-						}
+		register := tw.NewRegister[struct{}]()
+		var savedChildren []tw.Arg[int]
+		tw.RegisterTypeFn(register, func(ctx struct{}, val tw.Arg[int]) error {
+			savedChildren = append(savedChildren, val)
+			return nil
+		})
+		register.RegisterCompileSliceFn(func(typ reflect.Type) (tw.SliceWalkFn[struct{}], error) {
+			return func(ctx struct{}, s tw.Slice[struct{}]) error {
+				for i := range s.Len() {
+					err := s.Walk(ctx, i)
+					if err != nil {
+						return err
 					}
-					return nil
-				}, nil
-			})
-			walker := tw.NewWalker[struct{}](register)
+				}
+				return nil
+			}, nil
+		})
+		walker := tw.NewWalker[struct{}](register)
+		typeWalker, err := tw.NewTypeWalker[struct{}, []int](walker)
+		require.NoError(t, err)
+		t.Run("fromInterface", func(t *testing.T) {
+			savedChildren = nil
 			v := []int{1, 2, 3}
 			err := walker.Walk(struct{}{}, v)
 			require.NoError(t, err)
@@ -573,30 +663,11 @@ func settableSliceHelper(t *testing.T) {
 			}
 		})
 		t.Run("fromPointer", func(t *testing.T) {
-			register := tw.NewRegister[struct{}]()
-			var savedChildren []tw.Arg[int]
-			tw.RegisterTypeFn(register, func(ctx struct{}, val tw.Arg[int]) error {
-				savedChildren = append(savedChildren, val)
-				return nil
-			})
-			register.RegisterCompileSliceFn(func(typ reflect.Type) (tw.SliceWalkFn[struct{}], error) {
-				return func(ctx struct{}, s tw.Slice[struct{}]) error {
-					for i := range s.Len() {
-						err := s.Walk(ctx, i)
-						if err != nil {
-							return err
-						}
-					}
-					return nil
-				}, nil
-			})
-			walker := tw.NewWalker[struct{}](register)
-			typeWalker, err := tw.NewTypeWalker[struct{}, []int](walker)
-			require.NoError(t, err)
+			savedChildren = nil
 			v := []int{1, 2, 3}
 			err = typeWalker.Walk(struct{}{}, &v)
 			require.NoError(t, err)
-			require.Equal(t, 3, len(savedChildren))
+			require.Len(t, savedChildren, 3)
 			var oldV int
 			for i, sv := range savedChildren {
 				assert.True(t, sv.CanSet())
@@ -610,25 +681,28 @@ func settableSliceHelper(t *testing.T) {
 
 func settableArrayHelper(t *testing.T) {
 	t.Run("array", func(t *testing.T) {
-		t.Run("fromInterface", func(t *testing.T) {
-			register := tw.NewRegister[struct{}]()
-			var savedChildren []tw.Arg[int]
-			tw.RegisterTypeFn(register, func(ctx struct{}, val tw.Arg[int]) error {
-				savedChildren = append(savedChildren, val)
-				return nil
-			})
-			register.RegisterCompileArrayFn(func(typ reflect.Type) (tw.ArrayWalkFn[struct{}], error) {
-				return func(ctx struct{}, a tw.Array[struct{}]) error {
-					for i := range a.Len() {
-						err := a.Walk(ctx, i)
-						if err != nil {
-							return err
-						}
+		register := tw.NewRegister[struct{}]()
+		var savedChildren []tw.Arg[int]
+		tw.RegisterTypeFn(register, func(ctx struct{}, val tw.Arg[int]) error {
+			savedChildren = append(savedChildren, val)
+			return nil
+		})
+		register.RegisterCompileArrayFn(func(typ reflect.Type) (tw.ArrayWalkFn[struct{}], error) {
+			return func(ctx struct{}, a tw.Array[struct{}]) error {
+				for i := range a.Len() {
+					err := a.Walk(ctx, i)
+					if err != nil {
+						return err
 					}
-					return nil
-				}, nil
-			})
-			walker := tw.NewWalker[struct{}](register)
+				}
+				return nil
+			}, nil
+		})
+		walker := tw.NewWalker[struct{}](register)
+		typeWalker, err := tw.NewTypeWalker[struct{}, [3]int](walker)
+		require.NoError(t, err)
+		t.Run("fromInterface", func(t *testing.T) {
+			savedChildren = nil
 			v := [...]int{1, 2, 3}
 			err := walker.Walk(struct{}{}, v)
 			require.NoError(t, err)
@@ -637,30 +711,11 @@ func settableArrayHelper(t *testing.T) {
 			}
 		})
 		t.Run("fromPointer", func(t *testing.T) {
-			register := tw.NewRegister[struct{}]()
-			var savedChildren []tw.Arg[int]
-			tw.RegisterTypeFn(register, func(ctx struct{}, val tw.Arg[int]) error {
-				savedChildren = append(savedChildren, val)
-				return nil
-			})
-			register.RegisterCompileArrayFn(func(typ reflect.Type) (tw.ArrayWalkFn[struct{}], error) {
-				return func(ctx struct{}, a tw.Array[struct{}]) error {
-					for i := range a.Len() {
-						err := a.Walk(ctx, i)
-						if err != nil {
-							return err
-						}
-					}
-					return nil
-				}, nil
-			})
-			walker := tw.NewWalker[struct{}](register)
-			typeWalker, err := tw.NewTypeWalker[struct{}, [3]int](walker)
-			require.NoError(t, err)
+			savedChildren = nil
 			v := [...]int{1, 2, 3}
 			err = typeWalker.Walk(struct{}{}, &v)
 			require.NoError(t, err)
-			require.Equal(t, 3, len(savedChildren))
+			require.Len(t, savedChildren, 3)
 			var oldV int
 			for i, sv := range savedChildren {
 				assert.True(t, sv.CanSet())
@@ -679,64 +734,45 @@ func settableStructHelper(t *testing.T) {
 		C int
 	}
 	t.Run("struct", func(t *testing.T) {
-		t.Run("fromInterface", func(t *testing.T) {
-			register := tw.NewRegister[struct{}]()
-			var savedChildren []tw.Arg[int]
-			tw.RegisterTypeFn(register, func(ctx struct{}, val tw.Arg[int]) error {
-				savedChildren = append(savedChildren, val)
-				return nil
-			})
-			register.RegisterCompileStructFn(func(typ reflect.Type, register tw.StructFieldRegister) (tw.StructWalkFn[struct{}], error) {
-				for i := range typ.NumField() {
-					register.RegisterField(i)
-				}
-				return func(ctx struct{}, s tw.Struct[struct{}]) error {
-					for i := range s.NumFields() {
-						err := s.Walk(ctx, i)
-						if err != nil {
-							return err
-						}
+		register := tw.NewRegister[struct{}]()
+		var savedChildren []tw.Arg[int]
+		tw.RegisterTypeFn(register, func(ctx struct{}, val tw.Arg[int]) error {
+			savedChildren = append(savedChildren, val)
+			return nil
+		})
+		register.RegisterCompileStructFn(func(typ reflect.Type, register tw.StructFieldRegister) (tw.StructWalkFn[struct{}], error) {
+			for i := range typ.NumField() {
+				register.RegisterField(i)
+			}
+			return func(ctx struct{}, s tw.Struct[struct{}]) error {
+				for i := range s.NumFields() {
+					err := s.Walk(ctx, i)
+					if err != nil {
+						return err
 					}
-					return nil
-				}, nil
-			})
-			walker := tw.NewWalker[struct{}](register)
+				}
+				return nil
+			}, nil
+		})
+		walker := tw.NewWalker[struct{}](register)
+		typeWalker, err := tw.NewTypeWalker[struct{}, ABC](walker)
+		require.NoError(t, err)
+		t.Run("fromInterface", func(t *testing.T) {
+			savedChildren = nil
 			v := ABC{A: 1, B: 2, C: 3}
 			err := walker.Walk(struct{}{}, v)
 			require.NoError(t, err)
-			require.Equal(t, 3, len(savedChildren))
+			require.Len(t, savedChildren, 3)
 			for _, sv := range savedChildren {
 				assert.False(t, sv.CanSet())
 			}
 		})
 		t.Run("fromPointer", func(t *testing.T) {
-			register := tw.NewRegister[struct{}]()
-			var savedChildren []tw.Arg[int]
-			tw.RegisterTypeFn(register, func(ctx struct{}, val tw.Arg[int]) error {
-				savedChildren = append(savedChildren, val)
-				return nil
-			})
-			register.RegisterCompileStructFn(func(typ reflect.Type, register tw.StructFieldRegister) (tw.StructWalkFn[struct{}], error) {
-				for i := range typ.NumField() {
-					register.RegisterField(i)
-				}
-				return func(ctx struct{}, s tw.Struct[struct{}]) error {
-					for i := range s.NumFields() {
-						err := s.Walk(ctx, i)
-						if err != nil {
-							return err
-						}
-					}
-					return nil
-				}, nil
-			})
-			walker := tw.NewWalker[struct{}](register)
-			typeWalker, err := tw.NewTypeWalker[struct{}, ABC](walker)
-			require.NoError(t, err)
+			savedChildren = nil
 			v := ABC{A: 1, B: 2, C: 3}
 			err = typeWalker.Walk(struct{}{}, &v)
 			require.NoError(t, err)
-			require.Equal(t, 3, len(savedChildren))
+			require.Len(t, savedChildren, 3)
 			for _, sv := range savedChildren {
 				assert.True(t, sv.CanSet())
 			}
@@ -762,19 +798,22 @@ func settableStructHelper(t *testing.T) {
 
 func settablePtrHelper(t *testing.T) {
 	t.Run("ptr", func(t *testing.T) {
+		register := tw.NewRegister[struct{}]()
+		var savedChildren []tw.Arg[int]
+		tw.RegisterTypeFn(register, func(ctx struct{}, val tw.Arg[int]) error {
+			savedChildren = append(savedChildren, val)
+			return nil
+		})
+		register.RegisterCompilePtrFn(func(typ reflect.Type) (tw.PtrWalkFn[struct{}], error) {
+			return func(ctx struct{}, p tw.Ptr[struct{}]) error {
+				return p.Walk(ctx)
+			}, nil
+		})
+		walker := tw.NewWalker[struct{}](register)
+		typeWalker, err := tw.NewTypeWalker[struct{}, *int](walker)
+		require.NoError(t, err)
 		t.Run("fromInterface", func(t *testing.T) {
-			register := tw.NewRegister[struct{}]()
-			var savedChildren []tw.Arg[int]
-			tw.RegisterTypeFn(register, func(ctx struct{}, val tw.Arg[int]) error {
-				savedChildren = append(savedChildren, val)
-				return nil
-			})
-			register.RegisterCompilePtrFn(func(typ reflect.Type) (tw.PtrWalkFn[struct{}], error) {
-				return func(ctx struct{}, p tw.Ptr[struct{}]) error {
-					return p.Walk(ctx)
-				}, nil
-			})
-			walker := tw.NewWalker[struct{}](register)
+			savedChildren = nil
 			v := ptr(1)
 			err := walker.Walk(struct{}{}, v)
 			require.NoError(t, err)
@@ -787,30 +826,68 @@ func settablePtrHelper(t *testing.T) {
 			}
 		})
 		t.Run("fromPointer", func(t *testing.T) {
-			register := tw.NewRegister[struct{}]()
-			var savedChildren []tw.Arg[int]
-			tw.RegisterTypeFn(register, func(ctx struct{}, val tw.Arg[int]) error {
-				savedChildren = append(savedChildren, val)
-				return nil
-			})
-			register.RegisterCompilePtrFn(func(typ reflect.Type) (tw.PtrWalkFn[struct{}], error) {
-				return func(ctx struct{}, s tw.Ptr[struct{}]) error {
-					return s.Walk(ctx)
-				}, nil
-			})
-			walker := tw.NewWalker[struct{}](register)
-			typeWalker, err := tw.NewTypeWalker[struct{}, *int](walker)
-			require.NoError(t, err)
+			savedChildren = nil
 			v := ptr(1)
 			err = typeWalker.Walk(struct{}{}, &v)
 			require.NoError(t, err)
-			require.Equal(t, 1, len(savedChildren))
+			require.Len(t, savedChildren, 1)
 			var oldV int
 			for _, sv := range savedChildren {
 				assert.True(t, sv.CanSet())
 				oldV = sv.Get()
 				sv.Set(oldV + 1)
 				assert.Equal(t, oldV+1, *v)
+			}
+		})
+	})
+}
+
+func settableMapHelper(t *testing.T) {
+	t.Run("map", func(t *testing.T) {
+		register := tw.NewRegister[struct{}]()
+		var savedChildren []tw.Arg[int]
+		tw.RegisterTypeFn(register, func(ctx struct{}, val tw.Arg[int]) error {
+			savedChildren = append(savedChildren, val)
+			return nil
+		})
+		register.RegisterCompileMapFn(func(typ reflect.Type) (tw.MapWalkFn[struct{}], error) {
+			return func(ctx struct{}, m tw.Map[struct{}]) error {
+				iter := m.Iter()
+				for iter.Next() {
+					entry := iter.Entry()
+					err := entry.WalkKey(ctx)
+					if err != nil {
+						return err
+					}
+					err = entry.WalkValue(ctx)
+					if err != nil {
+						return err
+					}
+				}
+				return nil
+			}, nil
+		})
+		walker := tw.NewWalker[struct{}](register)
+		typeWalker, err := tw.NewTypeWalker[struct{}, map[int]int](walker)
+		require.NoError(t, err)
+		t.Run("fromInterface", func(t *testing.T) {
+			savedChildren = nil
+			v := map[int]int{1: 2, 3: 4}
+			err := walker.Walk(struct{}{}, v)
+			require.NoError(t, err)
+			require.Len(t, savedChildren, 4)
+			for _, sv := range savedChildren {
+				assert.False(t, sv.CanSet())
+			}
+		})
+		t.Run("fromPointer", func(t *testing.T) {
+			savedChildren = nil
+			v := map[int]int{1: 2, 3: 4}
+			err = typeWalker.Walk(struct{}{}, &v)
+			require.NoError(t, err)
+			require.Len(t, savedChildren, 4)
+			for _, sv := range savedChildren {
+				assert.False(t, sv.CanSet())
 			}
 		})
 	})

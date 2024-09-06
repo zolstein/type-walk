@@ -194,6 +194,13 @@ func (r *Register[Ctx]) RegisterCompileSliceFn(fn CompileSliceFn[Ctx]) {
 	r.compileFns[reflect.Slice] = eraseCompileSliceFn(fn)
 }
 
+type CompileMapFn[Ctx any] func(reflect.Type) (MapWalkFn[Ctx], error)
+type MapWalkFn[Ctx any] func(Ctx, Map[Ctx]) error
+
+func (r *Register[Ctx]) RegisterCompileMapFn(fn CompileMapFn[Ctx]) {
+	r.compileFns[reflect.Map] = eraseCompileMapFn(fn)
+}
+
 func eraseTypedCompileFn[Ctx any, In any](fn CompileFn[Ctx, In]) unsafe.Pointer {
 	_, fp := g_reflect.TypeAndPtrOf(fn)
 	return fp
@@ -215,6 +222,11 @@ func eraseCompileSliceFn[Ctx any](fn CompileSliceFn[Ctx]) unsafe.Pointer {
 }
 
 func eraseCompileStructFn[Ctx any](fn CompileStructFn[Ctx]) unsafe.Pointer {
+	_, fp := g_reflect.TypeAndPtrOf(fn)
+	return fp
+}
+
+func eraseCompileMapFn[Ctx any](fn CompileMapFn[Ctx]) unsafe.Pointer {
 	_, fp := g_reflect.TypeAndPtrOf(fn)
 	return fp
 }

@@ -120,6 +120,8 @@ func (w *Walker[Ctx]) compileFn(t g_reflect.Type) (walkFn[Ctx], error) {
 		return w.compileSlice(t, castTo[CompileSliceFn[Ctx]](fnPtr))
 	case g_reflect.Struct:
 		return w.compileStruct(t, castTo[CompileStructFn[Ctx]](fnPtr))
+	case g_reflect.Map:
+		return w.compileMap(t, castTo[CompileMapFn[Ctx]](fnPtr))
 	default:
 		compileFn := castTo[compileFn[Ctx]](fnPtr)
 		return compileFn(g_reflect.ToReflectType(t)), nil
@@ -206,6 +208,30 @@ func (w *Walker[Ctx]) compileStruct(t g_reflect.Type, fn CompileStructFn[Ctx]) (
 	return func(ctx Ctx, arg arg) error {
 		structWalker := Struct[Ctx]{meta: meta, arg: arg}
 		return structWalkFn(ctx, structWalker)
+	}, nil
+}
+
+func (w *Walker[Ctx]) compileMap(t g_reflect.Type, fn CompileMapFn[Ctx]) (walkFn[Ctx], error) {
+	keyFn, err := w.getFn(t.Key())
+	if err != nil {
+		return nil, err
+	}
+	valFn, err := w.getFn(t.Elem())
+	if err != nil {
+		return nil, err
+	}
+	mapMeta := mapMetadata[Ctx]{
+		typ:   t,
+		keyFn: keyFn,
+		valFn: valFn,
+	}
+	mapWalkFn, err := fn(g_reflect.ToReflectType(t))
+	if err != nil {
+		return nil, err
+	}
+	return func(ctx Ctx, arg arg) error {
+		mapWalker := Map[Ctx]{meta: &mapMeta, arg: arg}
+		return mapWalkFn(ctx, mapWalker)
 	}, nil
 }
 
@@ -361,4 +387,73 @@ func (p *Ptr[Ctx]) Walk(ctx Ctx) error {
 		canAddr: true,
 	}
 	return (*p.meta.elemFn)(ctx, elemArg)
+}
+
+type mapMetadata[Ctx any] struct {
+	typ   g_reflect.Type
+	keyFn *walkFn[Ctx]
+	valFn *walkFn[Ctx]
+}
+
+type Map[Ctx any] struct {
+	meta *mapMetadata[Ctx]
+	arg  arg
+}
+
+func (m *Map[Ctx]) IsNil() bool {
+	return *castTo[*unsafe.Pointer](m.arg.p) == nil
+}
+
+func (m *Map[Ctx]) Iter() MapIter[Ctx] {
+	ptr := m.arg.p
+	rMap := g_reflect.NewAt(m.meta.typ, ptr).Elem()
+	return MapIter[Ctx]{
+		meta: m.meta,
+		iter: rMap.MapRange(),
+	}
+}
+
+type MapIter[Ctx any] struct {
+	meta *mapMetadata[Ctx]
+	iter *g_reflect.MapIter
+}
+
+func (m *MapIter[Ctx]) Next() bool {
+	return m.iter.Next()
+}
+
+func (m *MapIter[Ctx]) Entry() MapEntry[Ctx] {
+	key := m.iter.Key().Interface()
+	val := m.iter.Value().Interface()
+	_, keyPtr := g_reflect.TypeAndPtrOf(key)
+	_, valPtr := g_reflect.TypeAndPtrOf(val)
+	return MapEntry[Ctx]{
+		meta:   m.meta,
+		keyPtr: keyPtr,
+		valPtr: valPtr,
+	}
+}
+
+type MapEntry[Ctx any] struct {
+	meta   *mapMetadata[Ctx]
+	keyPtr unsafe.Pointer
+	valPtr unsafe.Pointer
+}
+
+func (m *MapEntry[Ctx]) WalkKey(ctx Ctx) error {
+	keyArg := arg{
+		p: m.keyPtr,
+		// Map element isn't indexable.
+		canAddr: false,
+	}
+	return (*m.meta.keyFn)(ctx, keyArg)
+}
+
+func (m *MapEntry[Ctx]) WalkValue(ctx Ctx) error {
+	valArg := arg{
+		p: m.valPtr,
+		// Map element isn't indexable.
+		canAddr: false,
+	}
+	return (*m.meta.valFn)(ctx, valArg)
 }
