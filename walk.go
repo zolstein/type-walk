@@ -18,25 +18,21 @@ type walkFn[Ctx any] func(Ctx, arg) error
 // Must return walkFn[Ctx] for provided type.
 type compileFn[Ctx any] func(reflect.Type) walkFn[Ctx]
 
-// TypeWalker wraps a Walker to walk values of a specific type.
-type TypeWalker[Ctx any, In any] struct {
-	fn WalkFn[Ctx, In]
-}
+type TypeFn[Ctx any, In any] func(ctx Ctx, in *In) error
 
-// NewTypeWalker creates a new TypeWalker from the provided Walker.
-func NewTypeWalker[Ctx any, In any](w *Walker[Ctx]) (*TypeWalker[Ctx, In], error) {
+// TypeFnFor returns a TypeFn to walk a value of a particular type.
+func TypeFnFor[In any, Ctx any](w *Walker[Ctx]) (TypeFn[Ctx, In], error) {
 	fnPtr, err := w.getFn(reflectType[In]())
 	if err != nil {
 		return nil, err
 	}
+
 	fn := *(*unsafe.Pointer)(unsafe.Pointer(fnPtr))
 	castFn := castTo[WalkFn[Ctx, In]](fn)
-	return &TypeWalker[Ctx, In]{fn: castFn}, nil
-}
 
-// Walk walks a value of type In.
-func (w *TypeWalker[Ctx, In]) Walk(ctx Ctx, in *In) error {
-	return w.fn(ctx, argFor(in))
+	return func(ctx Ctx, in *In) error {
+		return castFn(ctx, argFor(in))
+	}, nil
 }
 
 func argFor[T any](ptr *T) Arg[T] {

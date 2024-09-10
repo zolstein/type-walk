@@ -67,9 +67,9 @@ func registerTypeFnHelper[V any](t *testing.T, v V) {
 		require.NoError(t, err)
 		assert.Equal(t, []V{v}, ctx)
 
-		typeWalker, err := tw.NewTypeWalker[*[]V, V](walker)
+		typeFn, err := tw.TypeFnFor[V](walker)
 		require.NoError(t, err)
-		err = typeWalker.Walk(&ctx, &v)
+		err = typeFn(&ctx, &v)
 		require.NoError(t, err)
 		assert.Equal(t, []V{v, v}, ctx)
 	})
@@ -121,9 +121,9 @@ func registerCompileTypeFnHelper[V any](t *testing.T, registerFn registerCompile
 		require.NoError(t, err)
 		assert.Equal(t, []V{v}, ctx)
 
-		typeWalker, err := tw.NewTypeWalker[*[]V, V](walker)
+		typeFn, err := tw.TypeFnFor[V](walker)
 		require.NoError(t, err)
-		err = typeWalker.Walk(&ctx, &v)
+		err = typeFn(&ctx, &v)
 		require.NoError(t, err)
 		assert.Equal(t, []V{v, v}, ctx)
 	})
@@ -184,7 +184,7 @@ func TestRegisterCompileStructFn(t *testing.T) {
 	})
 
 	walker := tw.NewWalker[*strings.Builder](register)
-	typeWalker, err := tw.NewTypeWalker[*strings.Builder, S](walker)
+	typeFn, err := tw.TypeFnFor[S](walker)
 	require.NoError(t, err)
 
 	{
@@ -195,7 +195,7 @@ func TestRegisterCompileStructFn(t *testing.T) {
 	}
 	{
 		var sb strings.Builder
-		err := typeWalker.Walk(&sb, &S{A: 123, B: B{C: "abc"}, D: D{E: 456, F: "def"}})
+		err := typeFn(&sb, &S{A: 123, B: B{C: "abc"}, D: D{E: 456, F: "def"}})
 		require.NoError(t, err)
 		assert.Equal(t, `{"A":123,"B":{"C":"abc"},"D":{"E":456,"F":"def"}}`, sb.String())
 	}
@@ -279,7 +279,7 @@ func TestRegisterCompileStructFnIndex(t *testing.T) {
 	})
 
 	walker := tw.NewWalker[*strings.Builder](register)
-	typeWalker, err := tw.NewTypeWalker[*strings.Builder, S](walker)
+	typeFn, err := tw.TypeFnFor[S](walker)
 	require.NoError(t, err)
 
 	s := S{A: 123, B: B{C: "abc"}, D: D{E: 456, F: "def"}, U: &U{V: "ghi", W: W{X: "jkl", Y: &Y{Z: 789}}}}
@@ -292,7 +292,7 @@ func TestRegisterCompileStructFnIndex(t *testing.T) {
 	}
 	{
 		var sb strings.Builder
-		err := typeWalker.Walk(&sb, &s)
+		err := typeFn(&sb, &s)
 		require.NoError(t, err)
 		assert.Equal(t, expected, sb.String())
 	}
@@ -330,7 +330,7 @@ func TestRegisterCompileArrayFn(t *testing.T) {
 	})
 
 	walker := tw.NewWalker[*strings.Builder](register)
-	typeWalker, err := tw.NewTypeWalker[*strings.Builder, [3]string](walker)
+	typeFn, err := tw.TypeFnFor[[3]string](walker)
 	require.NoError(t, err)
 
 	{
@@ -341,7 +341,7 @@ func TestRegisterCompileArrayFn(t *testing.T) {
 	}
 	{
 		var sb strings.Builder
-		err = typeWalker.Walk(&sb, &[3]string{"abc", "def", "ghi"})
+		err = typeFn(&sb, &[3]string{"abc", "def", "ghi"})
 		require.NoError(t, err)
 		assert.Equal(t, `["abc","def","ghi"]`, sb.String())
 	}
@@ -377,7 +377,7 @@ func TestRegisterCompileSliceFn(t *testing.T) {
 	})
 
 	walker := tw.NewWalker[*strings.Builder](register)
-	typeWalker, err := tw.NewTypeWalker[*strings.Builder, []string](walker)
+	typeFn, err := tw.TypeFnFor[[]string](walker)
 	require.NoError(t, err)
 
 	{
@@ -388,7 +388,7 @@ func TestRegisterCompileSliceFn(t *testing.T) {
 	}
 	{
 		var sb strings.Builder
-		err = typeWalker.Walk(&sb, &[]string{"abc", "def", "ghi"})
+		err = typeFn(&sb, &[]string{"abc", "def", "ghi"})
 		require.NoError(t, err)
 		assert.Equal(t, `["abc","def","ghi"]`, sb.String())
 	}
@@ -400,7 +400,7 @@ func TestRegisterCompileSliceFn(t *testing.T) {
 	}
 	{
 		var sb strings.Builder
-		err = typeWalker.Walk(&sb, ptr([]string(nil)))
+		err = typeFn(&sb, ptr([]string(nil)))
 		require.NoError(t, err)
 		assert.Equal(t, `null`, sb.String())
 	}
@@ -463,39 +463,39 @@ func TestRegisterCompilePtrFn(t *testing.T) {
 	}
 
 	{
-		typeWalker, err := tw.NewTypeWalker[*strings.Builder, *string](walker)
+		typeFn, err := tw.TypeFnFor[*string](walker)
 		require.NoError(t, err)
 		{
 			var sb strings.Builder
-			err = typeWalker.Walk(&sb, ptr((*string)(nil)))
+			err = typeFn(&sb, ptr((*string)(nil)))
 			require.NoError(t, err)
 			assert.Equal(t, `null`, sb.String())
 		}
 		{
 			var sb strings.Builder
-			err = typeWalker.Walk(&sb, ptr(ptr("abc")))
+			err = typeFn(&sb, ptr(ptr("abc")))
 			require.NoError(t, err)
 			assert.Equal(t, `ptr("abc")`, sb.String())
 		}
 	}
 	{
-		typeWalker, err := tw.NewTypeWalker[*strings.Builder, **string](walker)
+		typeFn, err := tw.TypeFnFor[**string](walker)
 		require.NoError(t, err)
 		{
 			var sb strings.Builder
-			err = typeWalker.Walk(&sb, ptr((**string)(nil)))
+			err = typeFn(&sb, ptr((**string)(nil)))
 			require.NoError(t, err)
 			assert.Equal(t, `null`, sb.String())
 		}
 		{
 			var sb strings.Builder
-			err = typeWalker.Walk(&sb, ptr(ptr[*string](nil)))
+			err = typeFn(&sb, ptr(ptr[*string](nil)))
 			require.NoError(t, err)
 			assert.Equal(t, `ptr(null)`, sb.String())
 		}
 		{
 			var sb strings.Builder
-			err = typeWalker.Walk(&sb, ptr(ptr(ptr("abc"))))
+			err = typeFn(&sb, ptr(ptr(ptr("abc"))))
 			require.NoError(t, err)
 			require.Equal(t, `ptr(ptr("abc"))`, sb.String())
 		}
@@ -546,7 +546,7 @@ func TestRegisterCompileMapFn(t *testing.T) {
 	})
 
 	walker := tw.NewWalker[*strings.Builder](register)
-	typeWalker, err := tw.NewTypeWalker[*strings.Builder, map[string]int](walker)
+	typeFn, err := tw.TypeFnFor[map[string]int](walker)
 	require.NoError(t, err)
 
 	{
@@ -570,19 +570,19 @@ func TestRegisterCompileMapFn(t *testing.T) {
 	}
 	{
 		var sb strings.Builder
-		err = typeWalker.Walk(&sb, ptr[map[string]int](nil))
+		err = typeFn(&sb, ptr[map[string]int](nil))
 		require.NoError(t, err)
 		assert.Equal(t, `null`, sb.String())
 	}
 	{
 		var sb strings.Builder
-		err = typeWalker.Walk(&sb, &map[string]int{})
+		err = typeFn(&sb, &map[string]int{})
 		require.NoError(t, err)
 		assert.Equal(t, `{}`, sb.String())
 	}
 	{
 		var sb strings.Builder
-		err = typeWalker.Walk(&sb, &map[string]int{"abc": 123, "def": 456})
+		err = typeFn(&sb, &map[string]int{"abc": 123, "def": 456})
 		require.NoError(t, err)
 		// Use JSONEq because map iteration order is not guaranteed.
 		assert.JSONEq(t, `{"abc":123,"def":456}`, sb.String())
@@ -634,7 +634,7 @@ func TestCompileRecursive(t *testing.T) {
 	})
 
 	walker := tw.NewWalker[*strings.Builder](register)
-	typeWalker, err := tw.NewTypeWalker[*strings.Builder, Node](walker)
+	typeFn, err := tw.TypeFnFor[Node](walker)
 	require.NoError(t, err)
 
 	{
@@ -645,7 +645,7 @@ func TestCompileRecursive(t *testing.T) {
 	}
 	{
 		var sb strings.Builder
-		err = typeWalker.Walk(&sb, &Node{val: 1, next: &Node{val: 2}})
+		err = typeFn(&sb, &Node{val: 1, next: &Node{val: 2}})
 		require.NoError(t, err)
 		assert.Equal(t, `{val:1,next:{val:2,next:nil}}`, sb.String())
 	}
@@ -716,9 +716,9 @@ func settableHelper[V any](t *testing.T, v V, newV V) {
 			err := walker.Walk(struct{}{}, v)
 			require.NoError(t, err)
 			assert.False(t, savedVal.CanSet())
-			typeWalker, err := tw.NewTypeWalker[struct{}, V](walker)
+			typeFn, err := tw.TypeFnFor[V](walker)
 			require.NoError(t, err)
-			err = typeWalker.Walk(struct{}{}, &v)
+			err = typeFn(struct{}{}, &v)
 			require.NoError(t, err)
 			assert.True(t, savedVal.CanSet())
 			assert.Equal(t, newV, v)
@@ -749,7 +749,7 @@ func settableSliceHelper(t *testing.T) {
 			}, nil
 		})
 		walker := tw.NewWalker[struct{}](register)
-		typeWalker, err := tw.NewTypeWalker[struct{}, []int](walker)
+		typeFn, err := tw.TypeFnFor[[]int](walker)
 		require.NoError(t, err)
 		t.Run("fromInterface", func(t *testing.T) {
 			savedChildren = nil
@@ -767,7 +767,7 @@ func settableSliceHelper(t *testing.T) {
 		t.Run("fromPointer", func(t *testing.T) {
 			savedChildren = nil
 			v := []int{1, 2, 3}
-			err = typeWalker.Walk(struct{}{}, &v)
+			err = typeFn(struct{}{}, &v)
 			require.NoError(t, err)
 			require.Len(t, savedChildren, 3)
 			var oldV int
@@ -801,7 +801,7 @@ func settableArrayHelper(t *testing.T) {
 			}, nil
 		})
 		walker := tw.NewWalker[struct{}](register)
-		typeWalker, err := tw.NewTypeWalker[struct{}, [3]int](walker)
+		typeFn, err := tw.TypeFnFor[[3]int](walker)
 		require.NoError(t, err)
 		t.Run("fromInterface", func(t *testing.T) {
 			savedChildren = nil
@@ -815,7 +815,7 @@ func settableArrayHelper(t *testing.T) {
 		t.Run("fromPointer", func(t *testing.T) {
 			savedChildren = nil
 			v := [...]int{1, 2, 3}
-			err = typeWalker.Walk(struct{}{}, &v)
+			err = typeFn(struct{}{}, &v)
 			require.NoError(t, err)
 			require.Len(t, savedChildren, 3)
 			var oldV int
@@ -857,7 +857,7 @@ func settableStructHelper(t *testing.T) {
 			}, nil
 		})
 		walker := tw.NewWalker[struct{}](register)
-		typeWalker, err := tw.NewTypeWalker[struct{}, ABC](walker)
+		typeFn, err := tw.TypeFnFor[ABC](walker)
 		require.NoError(t, err)
 		t.Run("fromInterface", func(t *testing.T) {
 			savedChildren = nil
@@ -872,7 +872,7 @@ func settableStructHelper(t *testing.T) {
 		t.Run("fromPointer", func(t *testing.T) {
 			savedChildren = nil
 			v := ABC{A: 1, B: 2, C: 3}
-			err = typeWalker.Walk(struct{}{}, &v)
+			err = typeFn(struct{}{}, &v)
 			require.NoError(t, err)
 			require.Len(t, savedChildren, 3)
 			for _, sv := range savedChildren {
@@ -912,7 +912,7 @@ func settablePtrHelper(t *testing.T) {
 			}, nil
 		})
 		walker := tw.NewWalker[struct{}](register)
-		typeWalker, err := tw.NewTypeWalker[struct{}, *int](walker)
+		typeFn, err := tw.TypeFnFor[*int](walker)
 		require.NoError(t, err)
 		t.Run("fromInterface", func(t *testing.T) {
 			savedChildren = nil
@@ -930,7 +930,7 @@ func settablePtrHelper(t *testing.T) {
 		t.Run("fromPointer", func(t *testing.T) {
 			savedChildren = nil
 			v := ptr(1)
-			err = typeWalker.Walk(struct{}{}, &v)
+			err = typeFn(struct{}{}, &v)
 			require.NoError(t, err)
 			require.Len(t, savedChildren, 1)
 			var oldV int
@@ -970,7 +970,7 @@ func settableMapHelper(t *testing.T) {
 			}, nil
 		})
 		walker := tw.NewWalker[struct{}](register)
-		typeWalker, err := tw.NewTypeWalker[struct{}, map[int]int](walker)
+		typeFn, err := tw.TypeFnFor[map[int]int](walker)
 		require.NoError(t, err)
 		t.Run("fromInterface", func(t *testing.T) {
 			savedChildren = nil
@@ -985,7 +985,7 @@ func settableMapHelper(t *testing.T) {
 		t.Run("fromPointer", func(t *testing.T) {
 			savedChildren = nil
 			v := map[int]int{1: 2, 3: 4}
-			err = typeWalker.Walk(struct{}{}, &v)
+			err = typeFn(struct{}{}, &v)
 			require.NoError(t, err)
 			require.Len(t, savedChildren, 4)
 			for _, sv := range savedChildren {

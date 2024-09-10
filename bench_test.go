@@ -169,12 +169,12 @@ func BenchmarkSimpleJsonSerialize(b *testing.B) {
 	})
 
 	walker := tw.NewWalker(register)
-	typeWalker, err := tw.NewTypeWalker[*bytes.Buffer, []*Outer](walker)
+	typeFn, err := tw.TypeFnFor[[]*Outer](walker)
 	require.NoError(b, err)
 
 	serializeTypeWalk := func(toSerialize *[]*Outer) {
 		bb.Reset()
-		err := typeWalker.Walk(&bb, toSerialize)
+		err := typeFn(&bb, toSerialize)
 		require.NoError(b, err)
 	}
 
