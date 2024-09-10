@@ -53,10 +53,11 @@ sub-value is, so we don't generally need to do more reflection to figure it out.
 
 A walk function (`WalkFn`) has the following type definition:
 
-`type WalkFn[Ctx any, In any] func(Ctx, *In) error`
+`type WalkFn[Ctx any, In any] func(Ctx, Arg[In]) error`
 
-`In` is the type being walked. Note that while WalkFn takes a _pointer_ to the In value, the function is designed to work
-on the pointed-at `In` value.
+`In` is the type being walked. `Arg[In]` is a wrapper type, which represents a value of type `In` in the context of the
+walk. The `In` value can be read with `Get` method, and (if it represents an addressable value) can be set with `Set`.
+`CanSet` can be used to check if the arg is settable.
 
 `Ctx` is a "do whatever you want" parameter. It's a value that's passed along with the values you're walking through the
 program. You can use it to modify the way you process a value, pass information between levels of the walk, or expose
@@ -80,11 +81,11 @@ A compiling function (CompileFn) has the following type definition:
 
 Or, spelled out all the way:
 
-`type CompileFn[Ctx any, In any] func(reflect.Type) func(Ctx, *In) error`.
+`type CompileFn[Ctx any, In any] func(reflect.Type) func(Ctx, Arg[In]) error`.
 
 So it's a function which takes a `reflect.Type`, and returns a function that walks values of that type.
 
-CompileFns are designed to handle all types of a particular kind. For example, a CompileFn[T, int] would be called for
+CompileFns are designed to handle all types of a particular kind. For example, a `CompileFn[T, int]` would be called for
 any types of kind Int, not _just_ the exact type `int`. For instance, if you defined `type ID int`, the
 CompileFn for `int` would be used to compile a WalkFn for `ID`.
 
@@ -93,8 +94,8 @@ consider that most of the time the CompileFn will return a closure, which will c
 
 ```
 var _ tw.CompileFn[any, int] = func(typ reflect.Type) WalkFn[Ctx, int] {
-   return func(ctx any, i *int) error {
-      fmt.Printf("Walking value of type %s with value %d", typ.Name(), *i)
+   return func(ctx any, i Arg[Int]) error {
+      fmt.Printf("Walking value of type %s with value %d", typ.Name(), i.Get())
    }
 }
 ```
@@ -106,19 +107,19 @@ What about structs, and slices, and arrays? type-walk supports this too, and thi
 really comes into play. For each of these, it provides specialized kinds of functions.
 
 ```
-type SliceWalkFn[Ctx any] func(Ctx, SliceWalker[Ctx]) error
+type SliceWalkFn[Ctx any] func(Ctx, Slice[Ctx]) error
 type CompileSliceFn[Ctx any] func(reflect.Type) (SliceWalkFn[Ctx], error)
 ```
 
-SliceWalker represents a slice of any type, but in the context of the SliceWalkFn returned by a CompileSliceFn, it will
-always contain elements of the reflect.Type. SliceWalker lets you get the length and capacity of the slice, as well as
-whether it's nil. Most importantly, though, it lets you call the registered WalkFn on any of its elements by calling
-SliceWalker.Walk(ctx, idx).
+Slice represents a slice of any type, but in the context of the SliceWalkFn returned by a CompileSliceFn, it will
+always contain elements of the reflect.Type. Slice lets you get the length and capacity of the slice, as well as
+whether it's nil. Most importantly, though, it lets you get an element at one of its indexes, with Slice.Elem(idx), and 
+you can call the registered WalkFn on that element with SliceElem.Walk(ctx).
 
-All the other more complicated types have similar Walk and Compile functions, as well as similar Walker types.
-Importantly, rather than giving you direct access to the internal values, they let you walk those values recursively.
-This is key to the model of type-walk, and is part of what allows it to walk values efficiently - inside the SliceWalker,
-it knows what the type of the internal values is and what function it should call on them.
+All the other more complicated types have similar Walk and Compile functions, as well as similar types representing
+their values. Importantly, rather than giving you direct access to the internal values, they provide stub values that
+let you walk the inner values recursively. This is key to the model of type-walk, and is part of what allows it to walk
+values efficiently - inside the SliceElem, it knows what the type of the internal values is and what function it should call on them.
 
 ## Virtues
 
