@@ -3,6 +3,7 @@ package type_walk
 import (
 	"fmt"
 	"reflect"
+	"slices"
 	"unsafe"
 
 	g_reflect "github.com/goccy/go-reflect"
@@ -48,13 +49,14 @@ func argFor[T any](ptr *T) Arg[T] {
 	}
 }
 
+// Walker represents a collection of functions that can be used to walk a value using the Walk method.
 type Walker[Ctx any] struct {
 	typeFns    map[g_reflect.Type]*walkFn[Ctx]
 	compileFns [NUM_KIND]unsafe.Pointer
 }
 
 // NewWalker creates a new Walker from the registered functions in register.
-// Any new functions that are registered in the register after calling NewWalker will not be used by the returned Walker.
+// Any new functions that are added to the register after calling NewWalker will not be used by the returned Walker.
 func NewWalker[Ctx any](register *Register[Ctx]) *Walker[Ctx] {
 	typeFns := make(map[g_reflect.Type]*walkFn[Ctx], len(register.typeFns))
 	for _, e := range register.typeFns {
@@ -192,23 +194,56 @@ func (w *Walker[Ctx]) compileStruct(t g_reflect.Type, fn CompileStructFn[Ctx]) (
 		return nil, err
 	}
 	meta := &structMetadata[Ctx]{
-		typ:          t,
-		fieldOffsets: make([]uintptr, len(reg.fields)),
-		fieldFns:     make([]*walkFn[Ctx], len(reg.fields)),
+		typ:       t,
+		fieldInfo: make([]structFieldMetadata[Ctx], len(reg.indexes)),
 	}
-	for i := range reg.fields {
-		f := &reg.fields[i]
-		meta.fieldOffsets[i] = f.Offset
-		fn, err := w.getFn(f.Type)
+	for i, idx := range reg.indexes {
+		ft := t
+		offsets := []uintptr{0}
+		for i, x := range idx {
+			if i > 0 && ft.Kind() == reflect.Ptr && ft.Elem().Kind() == reflect.Struct {
+				ft = ft.Elem()
+				offsets = append(offsets, 0)
+			}
+			f := ft.Field(x)
+			ft = f.Type
+			offsets[len(offsets)-1] += f.Offset
+		}
+
+		fn, err := w.getFn(ft)
 		if err != nil {
 			return nil, err
 		}
-		meta.fieldFns[i] = fn
+		meta.fieldInfo[i] = structFieldMetadata[Ctx]{
+			typ:    ft,
+			lookup: lookupFieldFn(offsets),
+			fn:     fn,
+		}
 	}
 	return func(ctx Ctx, arg arg) error {
 		structWalker := Struct[Ctx]{meta: meta, arg: arg}
 		return structWalkFn(ctx, structWalker)
 	}, nil
+}
+
+type lookupFn func(arg) arg
+
+func lookupFieldFn(offsets []uintptr) lookupFn {
+	return func(a arg) arg {
+		for i, offset := range offsets {
+			if i >= 1 {
+				// If len(offsets) >= 1, the lookup goes through at least one pointer. In this case, it's necessarily
+				// behind a pointer, and therefore addressable.
+				a.canAddr = true
+				a.p = *(*unsafe.Pointer)(a.p)
+				if a.p == nil {
+					return arg{}
+				}
+			}
+			a.p = unsafe.Add(a.p, offset)
+		}
+		return a
+	}
 }
 
 func (w *Walker[Ctx]) compileMap(t g_reflect.Type, fn CompileMapFn[Ctx]) (walkFn[Ctx], error) {
@@ -241,46 +276,104 @@ type StructFieldRegister struct {
 }
 
 type structFieldRegister struct {
-	typ    g_reflect.Type
-	fields []g_reflect.StructField
+	typ     g_reflect.Type
+	indexes [][]int
+	buffer  []int
 }
 
-// RegisterField registers a field by field number, to be available while walking the struct.
-// When walking the struct, Struct.Walk(n) will walk the nth field registered.
+// RegisterField registers a field to be available while walking the struct, by its field number.
+// When walking the struct, Struct.Field(n) will return nth field registered.
 func (r *structFieldRegister) RegisterField(fieldNum int) int {
-	idx := len(r.fields)
-	f := r.typ.Field(fieldNum)
-	r.fields = append(r.fields, f)
+	idx := len(r.indexes)
+	if r.buffer == nil {
+		r.buffer = slices.Grow(r.buffer, max(r.typ.NumField(), 1))
+	} else {
+		r.buffer = slices.Grow(r.buffer, 1)
+	}
+	bufLen := len(r.buffer)
+	r.buffer = append(r.buffer, fieldNum)
+	r.indexes = append(r.indexes, r.buffer[bufLen:bufLen+1])
+	return idx
+}
+
+// RegisterFieldByIndex registers a field to be available while walking the struct, according to the Index field of
+// the reflect.StructField representing the field.
+func (r *structFieldRegister) RegisterFieldByIndex(index []int) int {
+	if len(index) == 0 {
+		panic("index must be non-empty")
+	}
+	idx := len(r.indexes)
+	r.indexes = append(r.indexes, index)
 	return idx
 }
 
 type structMetadata[Ctx any] struct {
-	typ          g_reflect.Type
-	fieldOffsets []uintptr
-	fieldFns     []*walkFn[Ctx]
+	typ       g_reflect.Type
+	fieldInfo []structFieldMetadata[Ctx]
 }
 
-// Struct is used to walk a struct value.
+type structFieldMetadata[Ctx any] struct {
+	typ    g_reflect.Type
+	lookup lookupFn
+	fn     *walkFn[Ctx]
+}
+
+// Struct represents a struct value.
 type Struct[Ctx any] struct {
 	meta *structMetadata[Ctx]
 	arg  arg
 }
 
 // NumFields returns the number of registered fields that can be walked.
-func (w *Struct[Ctx]) NumFields() int {
-	return len(w.meta.fieldFns)
+func (s *Struct[Ctx]) NumFields() int {
+	return len(s.meta.fieldInfo)
+}
+
+// Field returns the StructField value for a registered field, by index in the order the fields were registered.
+// idx must be in the range [0..NumFields())
+func (s *Struct[Ctx]) Field(idx int) StructField[Ctx] {
+	meta := &s.meta.fieldInfo[idx]
+	return StructField[Ctx]{
+		meta: meta,
+		arg:  meta.lookup(s.arg),
+	}
 }
 
 // Walk walks a registered field of the struct value.
 // idx must be in the range [0..NumFields())
-func (w *Struct[Ctx]) Walk(ctx Ctx, idx int) error {
-	fieldArg := arg{
-		p: unsafe.Add(w.arg.p, w.meta.fieldOffsets[idx]),
-		// A field is addressable iff the struct is addressable.
-		canAddr: w.arg.canAddr,
-	}
-	fieldFn := w.meta.fieldFns[idx]
-	return (*fieldFn)(ctx, fieldArg)
+func (s *Struct[Ctx]) Walk(ctx Ctx, idx int) error {
+	return s.Field(idx).Walk(ctx)
+}
+
+// StructField represents the field of a struct.
+type StructField[Ctx any] struct {
+	meta *structFieldMetadata[Ctx]
+	arg  arg
+}
+
+// IsValid returns true if the StructField is valid, otherwise false. Calling Walk on an invalid struct field panics.
+//
+// IsValid returns false only if the field is defined on the parent struct by a multipart Index, one or more of the
+// intermediate fields is a pointer, and one or more of the pointers used to look up the field on this value is nil.
+// For example, in the following type, Example.F1.F2 will be invalid if Example.F1 is nil, but not if F2 is nil.
+// Example.F3.F4 can never be invalid, because it is not referenced through a pointer (even though it is itself a
+// pointer.)
+//
+//	type Example struct {
+//	    F1 *struct {
+//	        F2 *int
+//	    }
+//	    F3 struct {
+//	        F4 *int
+//	    }
+//	}
+func (f StructField[Ctx]) IsValid() bool {
+	return f.arg.p != nil
+}
+
+// Walk walks the StructField. The StructField must be valid.
+func (f StructField[Ctx]) Walk(ctx Ctx) error {
+	return (*f.meta.fn)(ctx, f.arg)
 }
 
 type arrayMetadata[Ctx any] struct {
@@ -290,7 +383,7 @@ type arrayMetadata[Ctx any] struct {
 	elemFn   *walkFn[Ctx]
 }
 
-// Array is used to walk the elements of an array value.
+// Array represents an array value.
 type Array[Ctx any] struct {
 	meta *arrayMetadata[Ctx]
 	arg  arg
@@ -301,18 +394,39 @@ func (a Array[Ctx]) Len() int {
 	return a.meta.length
 }
 
-// Walk walks an element of the array value.
-// idx must be in the range [0..Len())
-func (a *Array[Ctx]) Walk(ctx Ctx, idx int) error {
+// Elem returns an ArrayElem representing an element of the array by idx.
+// idx must be in the range [0..Len()).
+func (a Array[Ctx]) Elem(idx int) ArrayElem[Ctx] {
 	if idx < 0 || idx >= a.meta.length {
 		panic("Index out of bounds")
 	}
+
 	elemArg := arg{
 		p: unsafe.Add(a.arg.p, a.meta.elemSize*uintptr(idx)),
 		// An element of an array is addressable iff the array is addressable.
 		canAddr: a.arg.canAddr,
 	}
-	return (*a.meta.elemFn)(ctx, elemArg)
+	return ArrayElem[Ctx]{
+		meta: a.meta,
+		arg:  elemArg,
+	}
+}
+
+// Walk walks an element of the array value.
+// idx must be in the range [0..Len())
+func (a *Array[Ctx]) Walk(ctx Ctx, idx int) error {
+	return a.Elem(idx).Walk(ctx)
+}
+
+// ArrayElem represents an element of an array.
+type ArrayElem[Ctx any] struct {
+	meta *arrayMetadata[Ctx]
+	arg  arg
+}
+
+// Walk walks the ArrayElem.
+func (e ArrayElem[Ctx]) Walk(ctx Ctx) error {
+	return (*e.meta.elemFn)(ctx, e.arg)
 }
 
 type sliceMetadata[Ctx any] struct {
@@ -321,7 +435,7 @@ type sliceMetadata[Ctx any] struct {
 	elemFn   *walkFn[Ctx]
 }
 
-// Slice represents a slice value being walked.
+// Slice represents a slice value.
 type Slice[Ctx any] struct {
 	meta *sliceMetadata[Ctx]
 	arg  arg
@@ -342,9 +456,9 @@ func (s Slice[Ctx]) IsNil() bool {
 	return s.argSlice() == nil
 }
 
-// Walk walks an element of the slice value.
-// idx must be in the range [0..Len())
-func (s *Slice[Ctx]) Walk(ctx Ctx, idx int) error {
+// Elem returns a SliceElem representing an element of the slice by idx.
+// idx must be in the range [0..Len()).
+func (s *Slice[Ctx]) Elem(idx int) SliceElem[Ctx] {
 	slice := s.argSlice()
 	if idx < 0 || idx >= len(slice) {
 		panic("Index out of bounds")
@@ -355,11 +469,32 @@ func (s *Slice[Ctx]) Walk(ctx Ctx, idx int) error {
 		// An element of a slice is always addressable because the slice implicitly includes a pointer.
 		canAddr: true,
 	}
-	return (*s.meta.elemFn)(ctx, elemArg)
+	return SliceElem[Ctx]{
+		meta: s.meta,
+		arg:  elemArg,
+	}
+}
+
+// Walk walks an element of the slice value.
+// idx must be in the range [0..Len())
+func (s *Slice[Ctx]) Walk(ctx Ctx, idx int) error {
+	return s.Elem(idx).Walk(ctx)
 }
 
 func (s *Slice[Ctx]) argSlice() []struct{} {
 	return *(*[]struct{})(s.arg.p)
+}
+
+// SliceElem represents an element of an array.
+type SliceElem[Ctx any] struct {
+	meta *sliceMetadata[Ctx]
+	arg  arg
+}
+
+// Walk walks the SliceElem.
+// idx must be in the range [0..Len())
+func (e SliceElem[Ctx]) Walk(ctx Ctx) error {
+	return (*e.meta.elemFn)(ctx, e.arg)
 }
 
 type ptrMetadata[Ctx any] struct {
@@ -367,7 +502,7 @@ type ptrMetadata[Ctx any] struct {
 	elemFn *walkFn[Ctx]
 }
 
-// Ptr represents a pointer value being walked.
+// Ptr represents a pointer value.
 type Ptr[Ctx any] struct {
 	meta *ptrMetadata[Ctx]
 	arg  arg
@@ -395,15 +530,18 @@ type mapMetadata[Ctx any] struct {
 	valFn *walkFn[Ctx]
 }
 
+// Map represents a Map value.
 type Map[Ctx any] struct {
 	meta *mapMetadata[Ctx]
 	arg  arg
 }
 
+// IsNil returns whether the map value is nil.
 func (m *Map[Ctx]) IsNil() bool {
 	return *castTo[*unsafe.Pointer](m.arg.p) == nil
 }
 
+// Iter returns an iterator over the elements of the map.
 func (m *Map[Ctx]) Iter() MapIter[Ctx] {
 	ptr := m.arg.p
 	rMap := g_reflect.NewAt(m.meta.typ, ptr).Elem()
@@ -413,15 +551,18 @@ func (m *Map[Ctx]) Iter() MapIter[Ctx] {
 	}
 }
 
+// MapIter represents an iterator over the entries of the map.
 type MapIter[Ctx any] struct {
 	meta *mapMetadata[Ctx]
 	iter *g_reflect.MapIter
 }
 
+// Next advances the MapIter to the next entry in the map.
 func (m *MapIter[Ctx]) Next() bool {
 	return m.iter.Next()
 }
 
+// Entry returns a MapEntry representing a key and value in the map.
 func (m *MapIter[Ctx]) Entry() MapEntry[Ctx] {
 	key := m.iter.Key().Interface()
 	val := m.iter.Value().Interface()
@@ -434,26 +575,67 @@ func (m *MapIter[Ctx]) Entry() MapEntry[Ctx] {
 	}
 }
 
+// MapEntry represents a key and value in the map.
 type MapEntry[Ctx any] struct {
 	meta   *mapMetadata[Ctx]
 	keyPtr unsafe.Pointer
 	valPtr unsafe.Pointer
 }
 
-func (m *MapEntry[Ctx]) WalkKey(ctx Ctx) error {
-	keyArg := arg{
-		p: m.keyPtr,
-		// Map element isn't indexable.
-		canAddr: false,
+// Key returns a MapKey representing a key in the map.
+func (m *MapEntry[Ctx]) Key() MapKey[Ctx] {
+	return MapKey[Ctx]{
+		meta: m.meta,
+		arg: arg{
+			p: m.keyPtr,
+			// Map element isn't indexable.
+			canAddr: false,
+		},
 	}
-	return (*m.meta.keyFn)(ctx, keyArg)
 }
 
-func (m *MapEntry[Ctx]) WalkValue(ctx Ctx) error {
-	valArg := arg{
-		p: m.valPtr,
-		// Map element isn't indexable.
-		canAddr: false,
+// Value returns a MapValue representing a value in the map.
+func (m *MapEntry[Ctx]) Value() MapValue[Ctx] {
+	return MapValue[Ctx]{
+		meta: m.meta,
+		arg: arg{
+			p: m.valPtr,
+			// Map element isn't indexable.
+			canAddr: false,
+		},
 	}
-	return (*m.meta.valFn)(ctx, valArg)
+}
+
+// WalkKey walks the key associated with this MapEntry.
+func (m *MapEntry[Ctx]) WalkKey(ctx Ctx) error {
+	key := m.Key()
+	return key.Walk(ctx)
+}
+
+// WalkValue walks the value associated with this MapEntry.
+func (m *MapEntry[Ctx]) WalkValue(ctx Ctx) error {
+	val := m.Value()
+	return val.Walk(ctx)
+}
+
+// MapKey represents a key in the map.
+type MapKey[Ctx any] struct {
+	meta *mapMetadata[Ctx]
+	arg  arg
+}
+
+// Walk walks the MapKey.
+func (m *MapKey[Ctx]) Walk(ctx Ctx) error {
+	return (*m.meta.keyFn)(ctx, m.arg)
+}
+
+// MapValue represents a value in the map.
+type MapValue[Ctx any] struct {
+	meta *mapMetadata[Ctx]
+	arg  arg
+}
+
+// Walk walks the MapValue.
+func (m *MapValue[Ctx]) Walk(ctx Ctx) error {
+	return (*m.meta.valFn)(ctx, m.arg)
 }

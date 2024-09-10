@@ -157,7 +157,6 @@ func TestRegisterCompileStructFn(t *testing.T) {
 	})
 
 	register.RegisterCompileStructFn(func(typ reflect.Type, sfw tw.StructFieldRegister) (tw.StructWalkFn[*strings.Builder], error) {
-		// fields := reflect.VisibleFields(typ)
 		fields := make([]reflect.StructField, typ.NumField())
 		for i := range fields {
 			fields[i] = typ.Field(i)
@@ -199,6 +198,109 @@ func TestRegisterCompileStructFn(t *testing.T) {
 		err := typeWalker.Walk(&sb, &S{A: 123, B: B{C: "abc"}, D: D{E: 456, F: "def"}})
 		require.NoError(t, err)
 		assert.Equal(t, `{"A":123,"B":{"C":"abc"},"D":{"E":456,"F":"def"}}`, sb.String())
+	}
+}
+
+func TestRegisterCompileStructFnIndex(t *testing.T) {
+
+	type B struct {
+		C string
+	}
+
+	type D struct {
+		E int
+		F string
+	}
+
+	type Y struct {
+		Z int
+	}
+
+	type W struct {
+		X string
+		*Y
+	}
+
+	type U struct {
+		V string
+		W
+	}
+
+	type S struct {
+		A int
+		B B
+		D
+		*U
+	}
+
+	register := tw.NewRegister[*strings.Builder]()
+	tw.RegisterTypeFn(register, func(ctx *strings.Builder, i tw.Int) error {
+		_, err := fmt.Fprint(ctx, i.Get())
+		return err
+	})
+	tw.RegisterTypeFn(register, func(ctx *strings.Builder, s tw.String) error {
+		_, err := fmt.Fprintf(ctx, `"%s"`, s.Get())
+		return err
+	})
+
+	register.RegisterCompileStructFn(func(typ reflect.Type, sfw tw.StructFieldRegister) (tw.StructWalkFn[*strings.Builder], error) {
+		fields := make([]reflect.StructField, 0, typ.NumField())
+		for _, f := range reflect.VisibleFields(typ) {
+			if f.Anonymous {
+				continue
+			}
+			fields = append(fields, f)
+			sfw.RegisterFieldByIndex(f.Index)
+		}
+		return func(ctx *strings.Builder, sw tw.Struct[*strings.Builder]) error {
+			ctx.WriteRune('{')
+			for i, field := range fields {
+				sf := sw.Field(i)
+				if !sf.IsValid() {
+					continue
+				}
+
+				if i > 0 {
+					ctx.WriteRune(',')
+				}
+				_, err := fmt.Fprintf(ctx, `"%s":`, field.Name)
+				if err != nil {
+					return err
+				}
+
+				err = sw.Walk(ctx, i)
+				if err != nil {
+					return err
+				}
+			}
+			ctx.WriteRune('}')
+			return nil
+		}, nil
+	})
+
+	walker := tw.NewWalker[*strings.Builder](register)
+	typeWalker, err := tw.NewTypeWalker[*strings.Builder, S](walker)
+	require.NoError(t, err)
+
+	s := S{A: 123, B: B{C: "abc"}, D: D{E: 456, F: "def"}, U: &U{V: "ghi", W: W{X: "jkl", Y: &Y{Z: 789}}}}
+	expected := `{"A":123,"B":{"C":"abc"},"E":456,"F":"def","V":"ghi","X":"jkl","Z":789}`
+	{
+		var sb strings.Builder
+		err := walker.Walk(&sb, s)
+		require.NoError(t, err)
+		assert.Equal(t, expected, sb.String())
+	}
+	{
+		var sb strings.Builder
+		err := typeWalker.Walk(&sb, &s)
+		require.NoError(t, err)
+		assert.Equal(t, expected, sb.String())
+	}
+	{
+		var sb strings.Builder
+		err := walker.Walk(&sb, S{A: 123, B: B{C: "abc"}, D: D{E: 456, F: "def"}, U: &U{V: "ghi", W: W{X: "jkl", Y: nil}}})
+		require.NoError(t, err)
+		assert.Equal(t, `{"A":123,"B":{"C":"abc"},"E":456,"F":"def","V":"ghi","X":"jkl"}`, sb.String())
 	}
 }
 
