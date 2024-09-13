@@ -132,6 +132,7 @@ func (w *Walker[Ctx]) compileArray(t g_reflect.Type, fn CompileArrayFn[Ctx]) (wa
 		return nil, err
 	}
 	arrayMeta := arrayMetadata[Ctx]{
+		typ:      t,
 		elemSize: t.Elem().Size(),
 		length:   t.Len(),
 		elemFn:   elemFn,
@@ -151,7 +152,10 @@ func (w *Walker[Ctx]) compilePtr(t g_reflect.Type, fn CompilePtrFn[Ctx]) (walkFn
 	if err != nil {
 		return nil, err
 	}
-	ptrMeta := ptrMetadata[Ctx]{elemFn: elemFn}
+	ptrMeta := ptrMetadata[Ctx]{
+		typ:    t,
+		elemFn: elemFn,
+	}
 	ptrWalkFn, err := fn(g_reflect.ToReflectType(t))
 	if err != nil {
 		return nil, err
@@ -168,6 +172,7 @@ func (w *Walker[Ctx]) compileSlice(t g_reflect.Type, fn CompileSliceFn[Ctx]) (wa
 		return nil, err
 	}
 	sliceMeta := sliceMetadata[Ctx]{
+		typ:      t,
 		elemSize: t.Elem().Size(),
 		elemFn:   elemFn,
 	}
@@ -321,13 +326,13 @@ type Struct[Ctx any] struct {
 }
 
 // NumFields returns the number of registered fields that can be walked.
-func (s *Struct[Ctx]) NumFields() int {
+func (s Struct[Ctx]) NumFields() int {
 	return len(s.meta.fieldInfo)
 }
 
 // Field returns the StructField value for a registered field, by index in the order the fields were registered.
 // idx must be in the range [0..NumFields())
-func (s *Struct[Ctx]) Field(idx int) StructField[Ctx] {
+func (s Struct[Ctx]) Field(idx int) StructField[Ctx] {
 	meta := &s.meta.fieldInfo[idx]
 	return StructField[Ctx]{
 		meta: meta,
@@ -337,8 +342,12 @@ func (s *Struct[Ctx]) Field(idx int) StructField[Ctx] {
 
 // Walk walks a registered field of the struct value.
 // idx must be in the range [0..NumFields())
-func (s *Struct[Ctx]) Walk(ctx Ctx, idx int) error {
+func (s Struct[Ctx]) Walk(ctx Ctx, idx int) error {
 	return s.Field(idx).Walk(ctx)
+}
+
+func (s Struct[Ctx]) Interface() any {
+	return g_reflect.NewAt(s.meta.typ, s.arg.p).Elem().Interface()
 }
 
 // StructField represents the field of a struct.
@@ -370,6 +379,10 @@ func (f StructField[Ctx]) IsValid() bool {
 // Walk walks the StructField. The StructField must be valid.
 func (f StructField[Ctx]) Walk(ctx Ctx) error {
 	return (*f.meta.fn)(ctx, f.arg)
+}
+
+func (f StructField[Ctx]) Interface() any {
+	return g_reflect.NewAt(f.meta.typ, f.arg.p).Elem().Interface()
 }
 
 type arrayMetadata[Ctx any] struct {
@@ -410,8 +423,12 @@ func (a Array[Ctx]) Elem(idx int) ArrayElem[Ctx] {
 
 // Walk walks an element of the array value.
 // idx must be in the range [0..Len())
-func (a *Array[Ctx]) Walk(ctx Ctx, idx int) error {
+func (a Array[Ctx]) Walk(ctx Ctx, idx int) error {
 	return a.Elem(idx).Walk(ctx)
+}
+
+func (a Array[Ctx]) Interface() any {
+	return g_reflect.NewAt(a.meta.typ, a.arg.p).Elem().Interface()
 }
 
 // ArrayElem represents an element of an array.
@@ -423,6 +440,10 @@ type ArrayElem[Ctx any] struct {
 // Walk walks the ArrayElem.
 func (e ArrayElem[Ctx]) Walk(ctx Ctx) error {
 	return (*e.meta.elemFn)(ctx, e.arg)
+}
+
+func (e ArrayElem[Ctx]) Interface() any {
+	return g_reflect.NewAt(e.meta.typ.Elem(), e.arg.p).Elem().Interface()
 }
 
 type sliceMetadata[Ctx any] struct {
@@ -454,7 +475,7 @@ func (s Slice[Ctx]) IsNil() bool {
 
 // Elem returns a SliceElem representing an element of the slice by idx.
 // idx must be in the range [0..Len()).
-func (s *Slice[Ctx]) Elem(idx int) SliceElem[Ctx] {
+func (s Slice[Ctx]) Elem(idx int) SliceElem[Ctx] {
 	slice := s.argSlice()
 	if idx < 0 || idx >= len(slice) {
 		panic("Index out of bounds")
@@ -473,11 +494,15 @@ func (s *Slice[Ctx]) Elem(idx int) SliceElem[Ctx] {
 
 // Walk walks an element of the slice value.
 // idx must be in the range [0..Len())
-func (s *Slice[Ctx]) Walk(ctx Ctx, idx int) error {
+func (s Slice[Ctx]) Walk(ctx Ctx, idx int) error {
 	return s.Elem(idx).Walk(ctx)
 }
 
-func (s *Slice[Ctx]) argSlice() []struct{} {
+func (a Slice[Ctx]) Interface() any {
+	return g_reflect.NewAt(a.meta.typ, a.arg.p).Elem().Interface()
+}
+
+func (s Slice[Ctx]) argSlice() []struct{} {
 	return *(*[]struct{})(s.arg.p)
 }
 
@@ -493,6 +518,10 @@ func (e SliceElem[Ctx]) Walk(ctx Ctx) error {
 	return (*e.meta.elemFn)(ctx, e.arg)
 }
 
+func (e SliceElem[Ctx]) Interface() any {
+	return g_reflect.NewAt(e.meta.typ.Elem(), e.arg.p).Elem().Interface()
+}
+
 type ptrMetadata[Ctx any] struct {
 	typ    g_reflect.Type
 	elemFn *walkFn[Ctx]
@@ -505,19 +534,23 @@ type Ptr[Ctx any] struct {
 }
 
 // IsNil returns if the pointer value is nil.
-func (p *Ptr[Ctx]) IsNil() bool {
+func (p Ptr[Ctx]) IsNil() bool {
 	return *castTo[*unsafe.Pointer](p.arg.p) == nil
 }
 
 // Walk walks the value pointed at by the pointer value.
 // The pointer value must not be nil.
-func (p *Ptr[Ctx]) Walk(ctx Ctx) error {
+func (p Ptr[Ctx]) Walk(ctx Ctx) error {
 	elemArg := arg{
 		p: *castTo[*unsafe.Pointer](p.arg.p),
 		// The value behind a pointer is always addressable - we have the pointer!
 		canAddr: true,
 	}
 	return (*p.meta.elemFn)(ctx, elemArg)
+}
+
+func (p Ptr[Ctx]) Interface() any {
+	return g_reflect.NewAt(p.meta.typ, p.arg.p).Elem().Interface()
 }
 
 type mapMetadata[Ctx any] struct {
@@ -533,18 +566,22 @@ type Map[Ctx any] struct {
 }
 
 // IsNil returns whether the map value is nil.
-func (m *Map[Ctx]) IsNil() bool {
+func (m Map[Ctx]) IsNil() bool {
 	return *castTo[*unsafe.Pointer](m.arg.p) == nil
 }
 
 // Iter returns an iterator over the elements of the map.
-func (m *Map[Ctx]) Iter() MapIter[Ctx] {
+func (m Map[Ctx]) Iter() MapIter[Ctx] {
 	ptr := m.arg.p
 	rMap := g_reflect.NewAt(m.meta.typ, ptr).Elem()
 	return MapIter[Ctx]{
 		meta: m.meta,
 		iter: rMap.MapRange(),
 	}
+}
+
+func (m Map[Ctx]) Interface() any {
+	return g_reflect.NewAt(m.meta.typ, m.arg.p).Elem().Interface()
 }
 
 // MapIter represents an iterator over the entries of the map.
@@ -554,12 +591,12 @@ type MapIter[Ctx any] struct {
 }
 
 // Next advances the MapIter to the next entry in the map.
-func (m *MapIter[Ctx]) Next() bool {
+func (m MapIter[Ctx]) Next() bool {
 	return m.iter.Next()
 }
 
 // Entry returns a MapEntry representing a key and value in the map.
-func (m *MapIter[Ctx]) Entry() MapEntry[Ctx] {
+func (m MapIter[Ctx]) Entry() MapEntry[Ctx] {
 	key := m.iter.Key().Interface()
 	val := m.iter.Value().Interface()
 	_, keyPtr := g_reflect.TypeAndPtrOf(key)
@@ -579,7 +616,7 @@ type MapEntry[Ctx any] struct {
 }
 
 // Key returns a MapKey representing a key in the map.
-func (m *MapEntry[Ctx]) Key() MapKey[Ctx] {
+func (m MapEntry[Ctx]) Key() MapKey[Ctx] {
 	return MapKey[Ctx]{
 		meta: m.meta,
 		arg: arg{
@@ -591,7 +628,7 @@ func (m *MapEntry[Ctx]) Key() MapKey[Ctx] {
 }
 
 // Value returns a MapValue representing a value in the map.
-func (m *MapEntry[Ctx]) Value() MapValue[Ctx] {
+func (m MapEntry[Ctx]) Value() MapValue[Ctx] {
 	return MapValue[Ctx]{
 		meta: m.meta,
 		arg: arg{
@@ -603,15 +640,13 @@ func (m *MapEntry[Ctx]) Value() MapValue[Ctx] {
 }
 
 // WalkKey walks the key associated with this MapEntry.
-func (m *MapEntry[Ctx]) WalkKey(ctx Ctx) error {
-	key := m.Key()
-	return key.Walk(ctx)
+func (m MapEntry[Ctx]) WalkKey(ctx Ctx) error {
+	return m.Key().Walk(ctx)
 }
 
 // WalkValue walks the value associated with this MapEntry.
-func (m *MapEntry[Ctx]) WalkValue(ctx Ctx) error {
-	val := m.Value()
-	return val.Walk(ctx)
+func (m MapEntry[Ctx]) WalkValue(ctx Ctx) error {
+	return m.Value().Walk(ctx)
 }
 
 // MapKey represents a key in the map.
@@ -621,8 +656,12 @@ type MapKey[Ctx any] struct {
 }
 
 // Walk walks the MapKey.
-func (m *MapKey[Ctx]) Walk(ctx Ctx) error {
+func (m MapKey[Ctx]) Walk(ctx Ctx) error {
 	return (*m.meta.keyFn)(ctx, m.arg)
+}
+
+func (m MapKey[Ctx]) Interface() any {
+	return g_reflect.NewAt(m.meta.typ.Key(), m.arg.p).Elem().Interface()
 }
 
 // MapValue represents a value in the map.
@@ -632,6 +671,10 @@ type MapValue[Ctx any] struct {
 }
 
 // Walk walks the MapValue.
-func (m *MapValue[Ctx]) Walk(ctx Ctx) error {
+func (m MapValue[Ctx]) Walk(ctx Ctx) error {
 	return (*m.meta.valFn)(ctx, m.arg)
+}
+
+func (m MapValue[Ctx]) Interface() any {
+	return g_reflect.NewAt(m.meta.typ.Elem(), m.arg.p).Elem().Interface()
 }

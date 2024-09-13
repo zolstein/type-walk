@@ -994,3 +994,206 @@ func settableMapHelper(t *testing.T) {
 		})
 	})
 }
+
+func TestInterface(t *testing.T) {
+	interfaceStructHelper(t)
+	interfaceStructFieldHelper(t)
+	interfaceArrayHelper(t)
+	interfaceArrayElemHelper(t)
+	interfaceSliceHelper(t)
+	interfaceSliceElemHelper(t)
+	interfacePtrHelper(t)
+}
+
+func interfaceStructHelper(t *testing.T) {
+	type ABC struct {
+		A int
+		B int
+		C int
+	}
+	t.Run("struct", func(t *testing.T) {
+		register := tw.NewRegister[*any]()
+		tw.RegisterTypeFn(register, func(*any, tw.Arg[int]) error { return nil })
+		register.RegisterCompileStructFn(func(typ reflect.Type, _ tw.StructFieldRegister) (tw.StructWalkFn[*any], error) {
+			return func(ctx *any, s tw.Struct[*any]) error {
+				*ctx = s.Interface()
+				return nil
+			}, nil
+		})
+		register.RegisterCompilePtrFn(func(typ reflect.Type) (tw.PtrWalkFn[*any], error) {
+			return func(ctx *any, p tw.Ptr[*any]) error {
+				return p.Walk(ctx)
+			}, nil
+		})
+		interfaceHelper(t, register, ABC{1, 2, 3}, ABC{4, 5, 6})
+	})
+}
+
+func interfaceStructFieldHelper(t *testing.T) {
+	type ABC struct {
+		A int
+		B int
+		C int
+	}
+	t.Run("struct-field", func(t *testing.T) {
+		register := tw.NewRegister[*any]()
+		tw.RegisterTypeFn(register, func(*any, tw.Arg[int]) error { return nil })
+		register.RegisterCompileStructFn(func(typ reflect.Type, r tw.StructFieldRegister) (tw.StructWalkFn[*any], error) {
+			r.RegisterField(1)
+			return func(ctx *any, s tw.Struct[*any]) error {
+				*ctx = s.Field(0).Interface()
+				return nil
+			}, nil
+		})
+		register.RegisterCompilePtrFn(func(typ reflect.Type) (tw.PtrWalkFn[*any], error) {
+			return func(ctx *any, p tw.Ptr[*any]) error {
+				return p.Walk(ctx)
+			}, nil
+		})
+		interfaceElemHelper(t, register, 2, ABC{1, 2, 3}, ABC{4, 5, 6})
+	})
+}
+
+func interfaceArrayHelper(t *testing.T) {
+	t.Run("array", func(t *testing.T) {
+		register := tw.NewRegister[*any]()
+		tw.RegisterTypeFn(register, func(*any, tw.Arg[int]) error { return nil })
+		register.RegisterCompileArrayFn(func(typ reflect.Type) (tw.ArrayWalkFn[*any], error) {
+			return func(ctx *any, a tw.Array[*any]) error {
+				*ctx = a.Interface()
+				return nil
+			}, nil
+		})
+		register.RegisterCompilePtrFn(func(typ reflect.Type) (tw.PtrWalkFn[*any], error) {
+			return func(ctx *any, p tw.Ptr[*any]) error {
+				return p.Walk(ctx)
+			}, nil
+		})
+		interfaceHelper(t, register, [...]int{1, 2, 3}, [...]int{4, 5, 6})
+	})
+}
+
+func interfaceArrayElemHelper(t *testing.T) {
+	t.Run("array-elem", func(t *testing.T) {
+		register := tw.NewRegister[*any]()
+		tw.RegisterTypeFn(register, func(*any, tw.Arg[int]) error { return nil })
+		register.RegisterCompileArrayFn(func(typ reflect.Type) (tw.ArrayWalkFn[*any], error) {
+			return func(ctx *any, a tw.Array[*any]) error {
+				*ctx = a.Elem(0).Interface()
+				return nil
+			}, nil
+		})
+		register.RegisterCompilePtrFn(func(typ reflect.Type) (tw.PtrWalkFn[*any], error) {
+			return func(ctx *any, p tw.Ptr[*any]) error {
+				return p.Walk(ctx)
+			}, nil
+		})
+		interfaceElemHelper(t, register, 1, [...]int{1, 2, 3}, [...]int{4, 5, 6})
+	})
+}
+
+func interfaceSliceHelper(t *testing.T) {
+	t.Run("slice", func(t *testing.T) {
+		register := tw.NewRegister[*any]()
+		tw.RegisterTypeFn(register, func(*any, tw.Arg[int]) error { return nil })
+		register.RegisterCompileSliceFn(func(typ reflect.Type) (tw.SliceWalkFn[*any], error) {
+			return func(ctx *any, s tw.Slice[*any]) error {
+				*ctx = s.Interface()
+				return nil
+			}, nil
+		})
+		register.RegisterCompilePtrFn(func(typ reflect.Type) (tw.PtrWalkFn[*any], error) {
+			return func(ctx *any, p tw.Ptr[*any]) error {
+				return p.Walk(ctx)
+			}, nil
+		})
+		interfaceHelper(t, register, []int{1, 2, 3}, []int{4})
+	})
+}
+
+func interfaceSliceElemHelper(t *testing.T) {
+	t.Run("slice-elem", func(t *testing.T) {
+		register := tw.NewRegister[*any]()
+		tw.RegisterTypeFn(register, func(*any, tw.Arg[int]) error { return nil })
+		register.RegisterCompileSliceFn(func(typ reflect.Type) (tw.SliceWalkFn[*any], error) {
+			return func(ctx *any, s tw.Slice[*any]) error {
+				*ctx = s.Elem(0).Interface()
+				return nil
+			}, nil
+		})
+		register.RegisterCompilePtrFn(func(typ reflect.Type) (tw.PtrWalkFn[*any], error) {
+			return func(ctx *any, p tw.Ptr[*any]) error {
+				return p.Walk(ctx)
+			}, nil
+		})
+		interfaceElemHelper(t, register, 1, []int{1, 2, 3}, []int{4})
+	})
+}
+
+func interfacePtrHelper(t *testing.T) {
+	t.Run("ptr", func(t *testing.T) {
+		register := tw.NewRegister[*any]()
+		tw.RegisterTypeFn(register, func(*any, tw.Arg[int]) error { return nil })
+		register.RegisterCompilePtrFn(func(typ reflect.Type) (tw.PtrWalkFn[*any], error) {
+			return func(ctx *any, p tw.Ptr[*any]) error {
+				*ctx = p.Interface()
+				return nil
+			}, nil
+		})
+		p1 := ptr(1)
+		interfaceHelperH(t, register, p1, p1, ptr(2))
+	})
+}
+
+func interfaceHelper[V any](t *testing.T, register *tw.Register[*any], v V, newV V) {
+	interfaceHelperH(t, register, v, v, newV)
+	interfacePtrHelperH(t, register, v, v, newV)
+}
+
+func interfaceElemHelper[In, V any](t *testing.T, register *tw.Register[*any], v V, in In, newIn In) {
+	interfaceHelperH(t, register, v, in, newIn)
+	interfacePtrHelperH(t, register, v, in, newIn)
+}
+
+func interfaceHelperH[In, V any](t *testing.T, register *tw.Register[*any], v V, in In, newIn In) {
+	walker := tw.NewWalker(register)
+	{
+		in := in
+		var out any
+		err := walker.Walk(&out, in)
+		require.NoError(t, err)
+		require.Equal(t, v, out)
+		rOut := reflect.ValueOf(out)
+		require.False(t, rOut.CanSet())
+		in = newIn
+		require.Equal(t, v, out)
+	}
+	typeFn, err := tw.TypeFnFor[In](walker)
+	require.NoError(t, err)
+	{
+		in := in
+		var out any
+		err := typeFn(&out, &in)
+		require.NoError(t, err)
+		require.Equal(t, v, out)
+		rOut := reflect.ValueOf(out)
+		require.False(t, rOut.CanSet())
+		in = newIn
+		require.Equal(t, v, out)
+	}
+}
+
+func interfacePtrHelperH[In, V any](t *testing.T, register *tw.Register[*any], v V, in In, newIn In) {
+	walker := tw.NewWalker(register)
+	{
+		in := in
+		var out any
+		err := walker.Walk(&out, &in)
+		require.NoError(t, err)
+		require.Equal(t, v, out)
+		rOut := reflect.ValueOf(out)
+		require.False(t, rOut.CanSet())
+		in = newIn
+		require.Equal(t, v, out)
+	}
+}
