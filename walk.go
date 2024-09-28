@@ -127,6 +127,7 @@ func (w *Walker[Ctx]) compileFn(t g_reflect.Type) (walkFn[Ctx], error) {
 }
 
 func (w *Walker[Ctx]) compileArray(t g_reflect.Type, fn CompileArrayFn[Ctx]) (walkFn[Ctx], error) {
+	arrayWalkFn := fn(g_reflect.ToReflectType(t))
 	elemFn, err := w.getFn(t.Elem())
 	if err != nil {
 		return nil, err
@@ -137,10 +138,6 @@ func (w *Walker[Ctx]) compileArray(t g_reflect.Type, fn CompileArrayFn[Ctx]) (wa
 		length:   t.Len(),
 		elemFn:   elemFn,
 	}
-	arrayWalkFn, err := fn(g_reflect.ToReflectType(t))
-	if err != nil {
-		return nil, err
-	}
 	return func(ctx Ctx, arg arg) error {
 		structWalker := Array[Ctx]{meta: &arrayMeta, arg: arg}
 		return arrayWalkFn(ctx, structWalker)
@@ -148,6 +145,7 @@ func (w *Walker[Ctx]) compileArray(t g_reflect.Type, fn CompileArrayFn[Ctx]) (wa
 }
 
 func (w *Walker[Ctx]) compilePtr(t g_reflect.Type, fn CompilePtrFn[Ctx]) (walkFn[Ctx], error) {
+	ptrWalkFn := fn(g_reflect.ToReflectType(t))
 	elemFn, err := w.getFn(t.Elem())
 	if err != nil {
 		return nil, err
@@ -156,10 +154,6 @@ func (w *Walker[Ctx]) compilePtr(t g_reflect.Type, fn CompilePtrFn[Ctx]) (walkFn
 		typ:    t,
 		elemFn: elemFn,
 	}
-	ptrWalkFn, err := fn(g_reflect.ToReflectType(t))
-	if err != nil {
-		return nil, err
-	}
 	return func(ctx Ctx, arg arg) error {
 		structWalker := Ptr[Ctx]{meta: &ptrMeta, arg: arg}
 		return ptrWalkFn(ctx, structWalker)
@@ -167,6 +161,7 @@ func (w *Walker[Ctx]) compilePtr(t g_reflect.Type, fn CompilePtrFn[Ctx]) (walkFn
 }
 
 func (w *Walker[Ctx]) compileSlice(t g_reflect.Type, fn CompileSliceFn[Ctx]) (walkFn[Ctx], error) {
+	sliceWalkFn := fn(g_reflect.ToReflectType(t))
 	elemFn, err := w.getFn(t.Elem())
 	if err != nil {
 		return nil, err
@@ -175,10 +170,6 @@ func (w *Walker[Ctx]) compileSlice(t g_reflect.Type, fn CompileSliceFn[Ctx]) (wa
 		typ:      t,
 		elemSize: t.Elem().Size(),
 		elemFn:   elemFn,
-	}
-	sliceWalkFn, err := fn(g_reflect.ToReflectType(t))
-	if err != nil {
-		return nil, err
 	}
 	return func(ctx Ctx, arg arg) error {
 		structWalker := Slice[Ctx]{meta: &sliceMeta, arg: arg}
@@ -190,10 +181,7 @@ func (w *Walker[Ctx]) compileStruct(t g_reflect.Type, fn CompileStructFn[Ctx]) (
 	reg := structFieldRegister{
 		typ: t,
 	}
-	structWalkFn, err := fn(g_reflect.ToReflectType(t), StructFieldRegister{&reg})
-	if err != nil {
-		return nil, err
-	}
+	structWalkFn := fn(g_reflect.ToReflectType(t), StructFieldRegister{&reg})
 	meta := &structMetadata[Ctx]{
 		typ:       t,
 		fieldInfo: make([]structFieldMetadata[Ctx], len(reg.indexes)),
@@ -248,6 +236,7 @@ func lookupFieldFn(offsets []uintptr) lookupFn {
 }
 
 func (w *Walker[Ctx]) compileMap(t g_reflect.Type, fn CompileMapFn[Ctx]) (walkFn[Ctx], error) {
+	mapWalkFn := fn(g_reflect.ToReflectType(t))
 	keyFn, err := w.getFn(t.Key())
 	if err != nil {
 		return nil, err
@@ -260,10 +249,6 @@ func (w *Walker[Ctx]) compileMap(t g_reflect.Type, fn CompileMapFn[Ctx]) (walkFn
 		typ:   t,
 		keyFn: keyFn,
 		valFn: valFn,
-	}
-	mapWalkFn, err := fn(g_reflect.ToReflectType(t))
-	if err != nil {
-		return nil, err
 	}
 	return func(ctx Ctx, arg arg) error {
 		mapWalker := Map[Ctx]{meta: &mapMeta, arg: arg}

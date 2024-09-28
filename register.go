@@ -166,36 +166,36 @@ func (r *Register[Ctx]) RegisterCompileUnsafePointerFn(fn CompileFn[Ctx, unsafe.
 	r.compileFns[reflect.UnsafePointer] = eraseTypedCompileFn(fn)
 }
 
-type CompileStructFn[Ctx any] func(reflect.Type, StructFieldRegister) (StructWalkFn[Ctx], error)
-type StructWalkFn[Ctx any] func(Ctx, Struct[Ctx]) error
+type CompileStructFn[Ctx any] func(reflect.Type, StructFieldRegister) WalkStructFn[Ctx]
+type WalkStructFn[Ctx any] func(Ctx, Struct[Ctx]) error
 
 func (r *Register[Ctx]) RegisterCompileStructFn(fn CompileStructFn[Ctx]) {
 	r.compileFns[reflect.Struct] = eraseCompileStructFn(fn)
 }
 
-type CompileArrayFn[Ctx any] func(reflect.Type) (ArrayWalkFn[Ctx], error)
-type ArrayWalkFn[Ctx any] func(Ctx, Array[Ctx]) error
+type CompileArrayFn[Ctx any] func(reflect.Type) WalkArrayFn[Ctx]
+type WalkArrayFn[Ctx any] func(Ctx, Array[Ctx]) error
 
 func (r *Register[Ctx]) RegisterCompileArrayFn(fn CompileArrayFn[Ctx]) {
 	r.compileFns[reflect.Array] = eraseCompileArrayFn(fn)
 }
 
-type CompilePtrFn[Ctx any] func(reflect.Type) (PtrWalkFn[Ctx], error)
-type PtrWalkFn[Ctx any] func(Ctx, Ptr[Ctx]) error
+type CompilePtrFn[Ctx any] func(reflect.Type) WalkPtrFn[Ctx]
+type WalkPtrFn[Ctx any] func(Ctx, Ptr[Ctx]) error
 
 func (r *Register[Ctx]) RegisterCompilePtrFn(fn CompilePtrFn[Ctx]) {
 	r.compileFns[reflect.Ptr] = eraseCompilePtrFn(fn)
 }
 
-type CompileSliceFn[Ctx any] func(reflect.Type) (SliceWalkFn[Ctx], error)
-type SliceWalkFn[Ctx any] func(Ctx, Slice[Ctx]) error
+type CompileSliceFn[Ctx any] func(reflect.Type) WalkSliceFn[Ctx]
+type WalkSliceFn[Ctx any] func(Ctx, Slice[Ctx]) error
 
 func (r *Register[Ctx]) RegisterCompileSliceFn(fn CompileSliceFn[Ctx]) {
 	r.compileFns[reflect.Slice] = eraseCompileSliceFn(fn)
 }
 
-type CompileMapFn[Ctx any] func(reflect.Type) (MapWalkFn[Ctx], error)
-type MapWalkFn[Ctx any] func(Ctx, Map[Ctx]) error
+type CompileMapFn[Ctx any] func(reflect.Type) WalkMapFn[Ctx]
+type WalkMapFn[Ctx any] func(Ctx, Map[Ctx]) error
 
 func (r *Register[Ctx]) RegisterCompileMapFn(fn CompileMapFn[Ctx]) {
 	r.compileFns[reflect.Map] = eraseCompileMapFn(fn)
@@ -237,4 +237,40 @@ func castTo[Out any](p unsafe.Pointer) Out {
 
 func reflectType[T any]() g_reflect.Type {
 	return g_reflect.TypeOf((*T)(nil)).Elem()
+}
+
+func ReturnErrFn[Ctx any, In any](err error) WalkFn[Ctx, In] {
+	return func(Ctx, Arg[In]) error {
+		return err
+	}
+}
+
+func ReturnErrArrayFn[Ctx any](err error) WalkArrayFn[Ctx] {
+	return func(Ctx, Array[Ctx]) error {
+		return err
+	}
+}
+
+func ReturnErrSliceFn[Ctx any](err error) WalkSliceFn[Ctx] {
+	return func(Ctx, Slice[Ctx]) error {
+		return err
+	}
+}
+
+func ReturnErrStructFn[Ctx any](err error) WalkStructFn[Ctx] {
+	return func(Ctx, Struct[Ctx]) error {
+		return err
+	}
+}
+
+func ReturnErrPtrFn[Ctx any](err error) WalkPtrFn[Ctx] {
+	return func(Ctx, Ptr[Ctx]) error {
+		return err
+	}
+}
+
+func ReturnErrMapFn[Ctx any](err error) WalkMapFn[Ctx] {
+	return func(Ctx, Map[Ctx]) error {
+		return err
+	}
 }
