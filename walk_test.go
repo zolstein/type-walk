@@ -316,7 +316,7 @@ func TestRegisterCompileArrayFn(t *testing.T) {
 	register.RegisterCompileArrayFn(func(typ reflect.Type) tw.WalkArrayFn[*strings.Builder] {
 		return func(ctx *strings.Builder, aw tw.Array[*strings.Builder]) error {
 			ctx.WriteRune('[')
-			for i := range aw.Len() {
+			for i := 0; i < aw.Len(); i++ {
 				if i > 0 {
 					ctx.WriteRune(',')
 				}
@@ -363,7 +363,7 @@ func TestRegisterCompileSliceFn(t *testing.T) {
 				return nil
 			}
 			ctx.WriteRune('[')
-			for i := range sw.Len() {
+			for i := 0; i < sw.Len(); i++ {
 				if i > 0 {
 					ctx.WriteRune(',')
 				}
@@ -740,7 +740,7 @@ func settableSliceHelper(t *testing.T) {
 		})
 		register.RegisterCompileSliceFn(func(typ reflect.Type) tw.WalkSliceFn[struct{}] {
 			return func(ctx struct{}, s tw.Slice[struct{}]) error {
-				for i := range s.Len() {
+				for i := 0; i < s.Len(); i++ {
 					err := s.Walk(ctx, i)
 					if err != nil {
 						return err
@@ -792,7 +792,7 @@ func settableArrayHelper(t *testing.T) {
 		})
 		register.RegisterCompileArrayFn(func(typ reflect.Type) tw.WalkArrayFn[struct{}] {
 			return func(ctx struct{}, a tw.Array[struct{}]) error {
-				for i := range a.Len() {
+				for i := 0; i < a.Len(); i++ {
 					err := a.Walk(ctx, i)
 					if err != nil {
 						return err
@@ -844,11 +844,11 @@ func settableStructHelper(t *testing.T) {
 			return nil
 		})
 		register.RegisterCompileStructFn(func(typ reflect.Type, register tw.StructFieldRegister) tw.WalkStructFn[struct{}] {
-			for i := range typ.NumField() {
+			for i := 0; i < typ.NumField(); i++ {
 				register.RegisterField(i)
 			}
 			return func(ctx struct{}, s tw.Struct[struct{}]) error {
-				for i := range s.NumFields() {
+				for i := 0; i < s.NumFields(); i++ {
 					err := s.Walk(ctx, i)
 					if err != nil {
 						return err
