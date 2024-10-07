@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"github.com/stretchr/testify/require"
 	tw "github.com/zolstein/type-walk"
-	"math/rand/v2"
+	"math/rand"
 	"reflect"
 	"runtime"
 	"strconv"
@@ -26,7 +26,7 @@ func BenchmarkSimpleJsonSerialize(b *testing.B) {
 
 	toSerialize := make([]*Outer, 100)
 	for i := range toSerialize {
-		inners := make([]*Inner, rand.N(10))
+		inners := make([]*Inner, rand.Intn(10))
 		for j := range inners {
 			inners[j] = &Inner{
 				D: rand.Int(),
@@ -62,7 +62,7 @@ func BenchmarkSimpleJsonSerialize(b *testing.B) {
 			}
 		case reflect.Slice:
 			bb.WriteRune('[')
-			for i := range v.Len() {
+			for i := 0; i < v.Len(); i++ {
 				if i > 0 {
 					bb.WriteRune(',')
 				}
@@ -72,7 +72,7 @@ func BenchmarkSimpleJsonSerialize(b *testing.B) {
 		case reflect.Struct:
 			bb.WriteRune('{')
 			t := v.Type()
-			for i := range t.NumField() {
+			for i := 0; i < t.NumField(); i++ {
 				if i > 0 {
 					bb.WriteRune(',')
 				}
@@ -93,7 +93,7 @@ func BenchmarkSimpleJsonSerialize(b *testing.B) {
 		runtime.GC()
 		b.ResetTimer()
 		b.ReportAllocs()
-		for range b.N {
+		for i := 0; i < b.N; i++ {
 			bb.Reset()
 			serializeReflect(reflect.ValueOf(toSerialize))
 			bs := bb.Bytes()
@@ -121,7 +121,7 @@ func BenchmarkSimpleJsonSerialize(b *testing.B) {
 	register.RegisterCompileSliceFn(func(r reflect.Type) tw.WalkSliceFn[*bytes.Buffer] {
 		return func(ctx *bytes.Buffer, s tw.Slice[*bytes.Buffer]) error {
 			bb.WriteRune('[')
-			for i := range s.Len() {
+			for i := 0; i < s.Len(); i++ {
 				if i > 0 {
 					bb.WriteRune(',')
 				}
@@ -142,7 +142,7 @@ func BenchmarkSimpleJsonSerialize(b *testing.B) {
 		}
 		return func(ctx *bytes.Buffer, s tw.Struct[*bytes.Buffer]) error {
 			bb.WriteRune('{')
-			for i := range s.NumFields() {
+			for i := 0; i < s.NumFields(); i++ {
 				if i > 0 {
 					bb.WriteRune(',')
 				}
@@ -183,7 +183,7 @@ func BenchmarkSimpleJsonSerialize(b *testing.B) {
 		runtime.GC()
 		b.ResetTimer()
 		b.ReportAllocs()
-		for range b.N {
+		for i := 0; i < b.N; i++ {
 			serializeTypeWalk(toSerializePtr)
 			bs := bb.Bytes()
 			_ = bs
@@ -193,9 +193,9 @@ func BenchmarkSimpleJsonSerialize(b *testing.B) {
 
 func randString(length int) string {
 	var letters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
-	bs := make([]byte, rand.N(length))
+	bs := make([]byte, rand.Intn(length))
 	for i := range bs {
-		bs[i] = letters[rand.N(len(letters))]
+		bs[i] = letters[rand.Intn(len(letters))]
 	}
 	return string(bs)
 }

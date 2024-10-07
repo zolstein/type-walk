@@ -55,7 +55,8 @@ type Walker[Ctx any] struct {
 // Any new functions that are added to the register after calling NewWalker will not be used by the returned Walker.
 func NewWalker[Ctx any](register *Register[Ctx]) *Walker[Ctx] {
 	typeFns := make(map[g_reflect.Type]*walkFn[Ctx], len(register.typeFns))
-	for _, e := range register.typeFns {
+	for i := range register.typeFns {
+		e := &register.typeFns[i]
 		typeFns[e.t] = &e.fn
 	}
 	return &Walker[Ctx]{
