@@ -1,6 +1,6 @@
 module github.com/zolstein/type-walk
 
-go 1.22.2
+go 1.22
 
 require (
 	github.com/goccy/go-reflect v1.2.0
