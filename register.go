@@ -201,6 +201,13 @@ func (r *Register[Ctx]) RegisterCompileMapFn(fn CompileMapFn[Ctx]) {
 	r.compileFns[reflect.Map] = eraseCompileMapFn(fn)
 }
 
+type CompileInterfaceFn[Ctx any] func(reflect.Type) WalkInterfaceFn[Ctx]
+type WalkInterfaceFn[Ctx any] func(Ctx, Interface[Ctx]) error
+
+func (r *Register[Ctx]) RegisterCompileInterfaceFn(fn CompileInterfaceFn[Ctx]) {
+	r.compileFns[reflect.Interface] = eraseCompileInterfaceFn(fn)
+}
+
 func eraseTypedCompileFn[Ctx any, In any](fn CompileFn[Ctx, In]) unsafe.Pointer {
 	_, fp := g_reflect.TypeAndPtrOf(fn)
 	return fp
@@ -227,6 +234,11 @@ func eraseCompileStructFn[Ctx any](fn CompileStructFn[Ctx]) unsafe.Pointer {
 }
 
 func eraseCompileMapFn[Ctx any](fn CompileMapFn[Ctx]) unsafe.Pointer {
+	_, fp := g_reflect.TypeAndPtrOf(fn)
+	return fp
+}
+
+func eraseCompileInterfaceFn[Ctx any](fn CompileInterfaceFn[Ctx]) unsafe.Pointer {
 	_, fp := g_reflect.TypeAndPtrOf(fn)
 	return fp
 }
@@ -271,6 +283,12 @@ func ReturnErrPtrFn[Ctx any](err error) WalkPtrFn[Ctx] {
 
 func ReturnErrMapFn[Ctx any](err error) WalkMapFn[Ctx] {
 	return func(Ctx, Map[Ctx]) error {
+		return err
+	}
+}
+
+func ReturnErrInterfaceFn[Ctx any](err error) WalkInterfaceFn[Ctx] {
+	return func(Ctx, Interface[Ctx]) error {
 		return err
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	tw "github.com/zolstein/type-walk"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"unsafe"
@@ -163,25 +164,7 @@ func TestRegisterCompileStructFn(t *testing.T) {
 			fields[i] = typ.Field(i)
 			sfw.RegisterField(i)
 		}
-		return func(ctx *strings.Builder, sw tw.Struct[*strings.Builder]) error {
-			ctx.WriteRune('{')
-			for i, field := range fields {
-				if i > 0 {
-					ctx.WriteRune(',')
-				}
-				_, err := fmt.Fprintf(ctx, `"%s":`, field.Name)
-				if err != nil {
-					return err
-				}
-
-				err = sw.Walk(ctx, i)
-				if err != nil {
-					return err
-				}
-			}
-			ctx.WriteRune('}')
-			return nil
-		}
+		return printStruct(fields)
 	})
 
 	walker := tw.NewWalker[*strings.Builder](register)
@@ -192,13 +175,13 @@ func TestRegisterCompileStructFn(t *testing.T) {
 		var sb strings.Builder
 		err := walker.Walk(&sb, S{A: 123, B: B{C: "abc"}, D: D{E: 456, F: "def"}})
 		require.NoError(t, err)
-		assert.Equal(t, `{"A":123,"B":{"C":"abc"},"D":{"E":456,"F":"def"}}`, sb.String())
+		assert.Equal(t, `{A:123,B:{C:"abc"},D:{E:456,F:"def"}}`, sb.String())
 	}
 	{
 		var sb strings.Builder
 		err := typeFn(&sb, &S{A: 123, B: B{C: "abc"}, D: D{E: 456, F: "def"}})
 		require.NoError(t, err)
-		assert.Equal(t, `{"A":123,"B":{"C":"abc"},"D":{"E":456,"F":"def"}}`, sb.String())
+		assert.Equal(t, `{A:123,B:{C:"abc"},D:{E:456,F:"def"}}`, sb.String())
 	}
 }
 
@@ -253,30 +236,7 @@ func TestRegisterCompileStructFnIndex(t *testing.T) {
 			fields = append(fields, f)
 			sfw.RegisterFieldByIndex(f.Index)
 		}
-		return func(ctx *strings.Builder, sw tw.Struct[*strings.Builder]) error {
-			ctx.WriteRune('{')
-			for i, field := range fields {
-				sf := sw.Field(i)
-				if !sf.IsValid() {
-					continue
-				}
-
-				if i > 0 {
-					ctx.WriteRune(',')
-				}
-				_, err := fmt.Fprintf(ctx, `"%s":`, field.Name)
-				if err != nil {
-					return err
-				}
-
-				err = sw.Walk(ctx, i)
-				if err != nil {
-					return err
-				}
-			}
-			ctx.WriteRune('}')
-			return nil
-		}
+		return printStruct(fields)
 	})
 
 	walker := tw.NewWalker[*strings.Builder](register)
@@ -284,7 +244,7 @@ func TestRegisterCompileStructFnIndex(t *testing.T) {
 	require.NoError(t, err)
 
 	s := S{A: 123, B: B{C: "abc"}, D: D{E: 456, F: "def"}, U: &U{V: "ghi", W: W{X: "jkl", Y: &Y{Z: 789}}}}
-	expected := `{"A":123,"B":{"C":"abc"},"E":456,"F":"def","V":"ghi","X":"jkl","Z":789}`
+	expected := `{A:123,B:{C:"abc"},E:456,F:"def",V:"ghi",X:"jkl",Z:789}`
 	{
 		var sb strings.Builder
 		err := walker.Walk(&sb, s)
@@ -301,7 +261,7 @@ func TestRegisterCompileStructFnIndex(t *testing.T) {
 		var sb strings.Builder
 		err := walker.Walk(&sb, S{A: 123, B: B{C: "abc"}, D: D{E: 456, F: "def"}, U: &U{V: "ghi", W: W{X: "jkl", Y: nil}}})
 		require.NoError(t, err)
-		assert.Equal(t, `{"A":123,"B":{"C":"abc"},"E":456,"F":"def","V":"ghi","X":"jkl"}`, sb.String())
+		assert.Equal(t, `{A:123,B:{C:"abc"},E:456,F:"def",V:"ghi",X:"jkl"}`, sb.String())
 	}
 }
 
@@ -590,6 +550,135 @@ func TestRegisterCompileMapFn(t *testing.T) {
 	}
 }
 
+func TestRegisterCompileInterfaceFn(t *testing.T) {
+
+	type myAny any
+
+	type Wrapper struct {
+		elem1 any
+		elem2 myAny
+		elem3 fmt.Stringer
+	}
+
+	register := tw.NewRegister[*strings.Builder]()
+
+	register.RegisterCompileIntFn(func(r reflect.Type) tw.WalkFn[*strings.Builder, int] {
+		return func(ctx *strings.Builder, i tw.Int) error {
+			_, err := fmt.Fprintf(ctx, `%s(%d)`, r.String(), i.Get())
+			return err
+		}
+	})
+
+	register.RegisterCompileStringFn(func(r reflect.Type) tw.WalkFn[*strings.Builder, string] {
+		return func(ctx *strings.Builder, s tw.String) error {
+			_, err := fmt.Fprintf(ctx, `%s("%s")`, r.String(), s.Get())
+			return err
+		}
+	})
+
+	register.RegisterCompilePtrFn(func(r reflect.Type) tw.WalkPtrFn[*strings.Builder] {
+		return func(ctx *strings.Builder, p tw.Ptr[*strings.Builder]) error {
+			ctx.WriteString("ptr")
+			ctx.WriteRune('(')
+			if p.IsNil() {
+				ctx.WriteString("nil")
+			} else {
+				err := p.Walk(ctx)
+				if err != nil {
+					return err
+				}
+			}
+			ctx.WriteRune(')')
+			return nil
+		}
+	})
+
+	register.RegisterCompileStructFn(func(typ reflect.Type, sfw tw.StructFieldRegister) tw.WalkStructFn[*strings.Builder] {
+		fields := make([]reflect.StructField, typ.NumField())
+		for i := range fields {
+			fields[i] = typ.Field(i)
+			sfw.RegisterField(i)
+		}
+		return printStruct(fields)
+	})
+
+	register.RegisterCompileInterfaceFn(func(typ reflect.Type) tw.WalkInterfaceFn[*strings.Builder] {
+		return func(ctx *strings.Builder, i tw.Interface[*strings.Builder]) error {
+			ctx.WriteString(typ.String())
+			ctx.WriteRune('(')
+			if i.IsNil() {
+				ctx.WriteString("nil")
+			} else {
+				err := i.Walk(ctx)
+				if err != nil {
+					return err
+				}
+			}
+			ctx.WriteRune(')')
+			return nil
+		}
+	})
+
+	walker := tw.NewWalker[*strings.Builder](register)
+	typeFn, err := tw.TypeFnFor[Wrapper](walker)
+	require.NoError(t, err)
+
+	{
+		var sb strings.Builder
+		err := walker.Walk(&sb, Wrapper{nil, nil, nil})
+		require.NoError(t, err)
+		assert.Equal(t, `{elem1:interface {}(nil),elem2:type_walk_test.myAny(nil),elem3:fmt.Stringer(nil)}`, sb.String())
+	}
+	{
+		var sb strings.Builder
+		err := walker.Walk(&sb, Wrapper{"val1", "val2", StringWrapper("val3")})
+		require.NoError(t, err)
+		assert.Equal(t, `{elem1:interface {}(string("val1")),elem2:type_walk_test.myAny(string("val2")),elem3:fmt.Stringer(type_walk_test.StringWrapper("val3"))}`, sb.String())
+	}
+	{
+		var sb strings.Builder
+		err := walker.Walk(&sb, Wrapper{1, 2, IntWrapper(3)})
+		require.NoError(t, err)
+		assert.Equal(t, `{elem1:interface {}(int(1)),elem2:type_walk_test.myAny(int(2)),elem3:fmt.Stringer(type_walk_test.IntWrapper(3))}`, sb.String())
+	}
+	{
+		var sb strings.Builder
+		err := typeFn(&sb, &Wrapper{"val1", "val2", StringWrapper("val3")})
+		require.NoError(t, err)
+		assert.Equal(t, `{elem1:interface {}(string("val1")),elem2:type_walk_test.myAny(string("val2")),elem3:fmt.Stringer(type_walk_test.StringWrapper("val3"))}`, sb.String())
+	}
+	{
+		var sb strings.Builder
+		err := typeFn(&sb, &Wrapper{1, 2, IntWrapper(3)})
+		require.NoError(t, err)
+		assert.Equal(t, `{elem1:interface {}(int(1)),elem2:type_walk_test.myAny(int(2)),elem3:fmt.Stringer(type_walk_test.IntWrapper(3))}`, sb.String())
+	}
+	{
+		var sb strings.Builder
+		err := walker.Walk(&sb, Wrapper{ptr("val1"), ptr("val2"), ptr[StringPtrWrapper]("val3")})
+		require.NoError(t, err)
+		assert.Equal(t, `{elem1:interface {}(ptr(string("val1"))),elem2:type_walk_test.myAny(ptr(string("val2"))),elem3:fmt.Stringer(ptr(type_walk_test.StringPtrWrapper("val3")))}`, sb.String())
+	}
+	{
+		var sb strings.Builder
+		err := walker.Walk(&sb, Wrapper{ptr(1), ptr(2), ptr[IntPtrWrapper](3)})
+		require.NoError(t, err)
+		assert.Equal(t, `{elem1:interface {}(ptr(int(1))),elem2:type_walk_test.myAny(ptr(int(2))),elem3:fmt.Stringer(ptr(type_walk_test.IntPtrWrapper(3)))}`, sb.String())
+	}
+	{
+		var sb strings.Builder
+		err := typeFn(&sb, &Wrapper{ptr("val1"), ptr("val2"), ptr[StringPtrWrapper]("val3")})
+		require.NoError(t, err)
+		assert.Equal(t, `{elem1:interface {}(ptr(string("val1"))),elem2:type_walk_test.myAny(ptr(string("val2"))),elem3:fmt.Stringer(ptr(type_walk_test.StringPtrWrapper("val3")))}`, sb.String())
+	}
+	{
+		var sb strings.Builder
+		err := typeFn(&sb, &Wrapper{ptr(1), ptr(2), ptr[IntPtrWrapper](3)})
+		require.NoError(t, err)
+		assert.Equal(t, `{elem1:interface {}(ptr(int(1))),elem2:type_walk_test.myAny(ptr(int(2))),elem3:fmt.Stringer(ptr(type_walk_test.IntPtrWrapper(3)))}`, sb.String())
+	}
+}
+
 func TestCompileRecursive(t *testing.T) {
 	type Node struct {
 		val  int
@@ -607,21 +696,7 @@ func TestCompileRecursive(t *testing.T) {
 			fields[i] = typ.Field(i)
 			s.RegisterField(i)
 		}
-		return func(ctx *strings.Builder, s tw.Struct[*strings.Builder]) error {
-			ctx.WriteRune('{')
-			for i, f := range fields {
-				if i > 0 {
-					ctx.WriteRune(',')
-				}
-				ctx.WriteString(f.Name)
-				ctx.WriteRune(':')
-				if err := s.Walk(ctx, i); err != nil {
-					return err
-				}
-			}
-			ctx.WriteRune('}')
-			return nil
-		}
+		return printStruct(fields)
 	})
 
 	register.RegisterCompilePtrFn(func(typ reflect.Type) tw.WalkPtrFn[*strings.Builder] {
@@ -686,6 +761,7 @@ func TestSettable(t *testing.T) {
 	settableStructHelper(t)
 	settablePtrHelper(t)
 	settableMapHelper(t)
+	settableInterfaceHelper(t)
 }
 
 func settableHelper[V any](t *testing.T, v V, newV V) {
@@ -996,6 +1072,81 @@ func settableMapHelper(t *testing.T) {
 	})
 }
 
+func settableInterfaceHelper(t *testing.T) {
+	t.Run("interface", func(t *testing.T) {
+		register := tw.NewRegister[struct{}]()
+		var savedChildren []tw.Arg[int]
+		tw.RegisterTypeFn(register, func(ctx struct{}, val tw.Arg[int]) error {
+			savedChildren = append(savedChildren, val)
+			return nil
+		})
+		register.RegisterCompileInterfaceFn(func(typ reflect.Type) tw.WalkInterfaceFn[struct{}] {
+			return func(ctx struct{}, i tw.Interface[struct{}]) error {
+				return i.Walk(ctx)
+			}
+		})
+		register.RegisterCompileArrayFn(func(typ reflect.Type) tw.WalkArrayFn[struct{}] {
+			return func(ctx struct{}, a tw.Array[struct{}]) error {
+				return a.Elem(0).Walk(ctx)
+			}
+		})
+		register.RegisterCompilePtrFn(func(typ reflect.Type) tw.WalkPtrFn[struct{}] {
+			return func(ctx struct{}, a tw.Ptr[struct{}]) error {
+				return a.Walk(ctx)
+			}
+		})
+		walker := tw.NewWalker[struct{}](register)
+		typeFn, err := tw.TypeFnFor[[1]any](walker)
+		require.NoError(t, err)
+		t.Run("valuefromInterface", func(t *testing.T) {
+			savedChildren = nil
+			v := [1]any{1}
+			err := walker.Walk(struct{}{}, v)
+			require.NoError(t, err)
+			for _, sv := range savedChildren {
+				assert.False(t, sv.CanSet())
+			}
+		})
+		t.Run("ptrfromInterface", func(t *testing.T) {
+			savedChildren = nil
+			v := [1]any{ptr(1)}
+			err := walker.Walk(struct{}{}, v)
+			require.NoError(t, err)
+			var oldV int
+			for _, sv := range savedChildren {
+				assert.True(t, sv.CanSet())
+				oldV = sv.Get()
+				sv.Set(oldV + 1)
+				assert.Equal(t, oldV+1, *(v[0].(*int)))
+			}
+		})
+		t.Run("valuefromPointer", func(t *testing.T) {
+			savedChildren = nil
+			v := [1]any{1}
+			err = typeFn(struct{}{}, &v)
+			require.NoError(t, err)
+			require.Len(t, savedChildren, 1)
+			for _, sv := range savedChildren {
+				assert.False(t, sv.CanSet())
+			}
+		})
+		t.Run("ptrfromPointer", func(t *testing.T) {
+			savedChildren = nil
+			v := [1]any{ptr(1)}
+			err = typeFn(struct{}{}, &v)
+			require.NoError(t, err)
+			require.Len(t, savedChildren, 1)
+			var oldV int
+			for _, sv := range savedChildren {
+				assert.True(t, sv.CanSet())
+				oldV = sv.Get()
+				sv.Set(oldV + 1)
+				assert.Equal(t, oldV+1, *(v[0].(*int)))
+			}
+		})
+	})
+}
+
 func TestInterface(t *testing.T) {
 	interfaceStructHelper(t)
 	interfaceStructFieldHelper(t)
@@ -1004,6 +1155,7 @@ func TestInterface(t *testing.T) {
 	interfaceSliceHelper(t)
 	interfaceSliceElemHelper(t)
 	interfacePtrHelper(t)
+	interfaceInterfaceHelper(t)
 }
 
 func interfaceStructHelper(t *testing.T) {
@@ -1146,6 +1298,30 @@ func interfacePtrHelper(t *testing.T) {
 	})
 }
 
+func interfaceInterfaceHelper(t *testing.T) {
+	t.Run("interface", func(t *testing.T) {
+		register := tw.NewRegister[*any]()
+		tw.RegisterTypeFn(register, func(*any, tw.Arg[int]) error { return nil })
+		register.RegisterCompileInterfaceFn(func(typ reflect.Type) tw.WalkInterfaceFn[*any] {
+			return func(ctx *any, p tw.Interface[*any]) error {
+				*ctx = p.Interface()
+				return nil
+			}
+		})
+		register.RegisterCompileArrayFn(func(typ reflect.Type) tw.WalkArrayFn[*any] {
+			return func(ctx *any, a tw.Array[*any]) error {
+				return a.Elem(0).Walk(ctx)
+			}
+		})
+		register.RegisterCompilePtrFn(func(typ reflect.Type) tw.WalkPtrFn[*any] {
+			return func(ctx *any, p tw.Ptr[*any]) error {
+				return p.Walk(ctx)
+			}
+		})
+		interfaceElemHelper(t, register, 1, [1]any{1}, [1]any{2})
+	})
+}
+
 func interfaceHelper[V any](t *testing.T, register *tw.Register[*any], v V, newV V) {
 	interfaceHelperH(t, register, v, v, newV)
 	interfacePtrHelperH(t, register, v, v, newV)
@@ -1219,6 +1395,9 @@ func TestReturnErrFn(t *testing.T) {
 	register.RegisterCompileMapFn(func(typ reflect.Type) tw.WalkMapFn[struct{}] {
 		return tw.ReturnErrMapFn[struct{}](errors.New("map error"))
 	})
+	register.RegisterCompileInterfaceFn(func(typ reflect.Type) tw.WalkInterfaceFn[struct{}] {
+		return tw.ReturnErrInterfaceFn[struct{}](errors.New("interface error"))
+	})
 	walker := tw.NewWalker(register)
 	ctx := struct{}{}
 	{
@@ -1245,4 +1424,60 @@ func TestReturnErrFn(t *testing.T) {
 		err := walker.Walk(ctx, map[int]int{})
 		assert.EqualError(t, err, "map error")
 	}
+	{
+		typeFn, err := tw.TypeFnFor[any](walker)
+		require.NoError(t, err)
+		in := any(1)
+		err = typeFn(ctx, &in)
+		assert.EqualError(t, err, "interface error")
+	}
+}
+
+func printStruct(fields []reflect.StructField) tw.WalkStructFn[*strings.Builder] {
+	return func(ctx *strings.Builder, sw tw.Struct[*strings.Builder]) error {
+		ctx.WriteRune('{')
+		for i, field := range fields {
+			sf := sw.Field(i)
+			if !sf.IsValid() {
+				continue
+			}
+
+			if i > 0 {
+				ctx.WriteRune(',')
+			}
+			ctx.WriteString(field.Name)
+			ctx.WriteRune(':')
+
+			err := sw.Walk(ctx, i)
+			if err != nil {
+				return err
+			}
+		}
+		ctx.WriteRune('}')
+		return nil
+	}
+}
+
+type StringWrapper string
+
+func (s StringWrapper) String() string {
+	return string(s)
+}
+
+type StringPtrWrapper string
+
+func (s *StringPtrWrapper) String() string {
+	return string(*s)
+}
+
+type IntWrapper int
+
+func (i IntWrapper) String() string {
+	return strconv.Itoa(int(i))
+}
+
+type IntPtrWrapper int
+
+func (i *IntPtrWrapper) String() string {
+	return strconv.Itoa(int(*i))
 }
