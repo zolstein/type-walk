@@ -97,6 +97,12 @@ var ptrTypes = [NUM_KIND]bool{
 func (w *Walker[Ctx]) getFn(t g_reflect.Type) (fn *walkFn[Ctx], err error) {
 	fn, ok := w.typeFns[t]
 	if !ok {
+		if t == nil {
+			// This panics, rather than returning an error, because it's an easily preventable user error.
+			// Check for nil before calling Walk!
+			// Maybe we should have a way to specify a handler for a nil interface?
+			panic("cannot compile function for nil type")
+		}
 		fn = new(walkFn[Ctx])
 		w.typeFns[t] = fn
 		*fn, err = w.compileFn(t)
@@ -121,6 +127,8 @@ func (w *Walker[Ctx]) compileFn(t g_reflect.Type) (walkFn[Ctx], error) {
 		return w.compileStruct(t, castTo[CompileStructFn[Ctx]](fnPtr))
 	case g_reflect.Map:
 		return w.compileMap(t, castTo[CompileMapFn[Ctx]](fnPtr))
+	case g_reflect.Interface:
+		return w.compileInterface(t, castTo[CompileInterfaceFn[Ctx]](fnPtr))
 	default:
 		compileFn := castTo[compileFn[Ctx]](fnPtr)
 		return compileFn(g_reflect.ToReflectType(t)), nil
@@ -254,6 +262,18 @@ func (w *Walker[Ctx]) compileMap(t g_reflect.Type, fn CompileMapFn[Ctx]) (walkFn
 	return func(ctx Ctx, arg arg) error {
 		mapWalker := Map[Ctx]{meta: &mapMeta, arg: arg}
 		return mapWalkFn(ctx, mapWalker)
+	}, nil
+}
+
+func (w *Walker[Ctx]) compileInterface(t g_reflect.Type, fn CompileInterfaceFn[Ctx]) (walkFn[Ctx], error) {
+	ifaceWalkFn := fn(g_reflect.ToReflectType(t))
+	ifaceMeta := ifaceMetadata[Ctx]{
+		typ:    t,
+		walker: w,
+	}
+	return func(ctx Ctx, arg arg) error {
+		structWalker := Interface[Ctx]{meta: &ifaceMeta, arg: arg}
+		return ifaceWalkFn(ctx, structWalker)
 	}, nil
 }
 
@@ -663,4 +683,31 @@ func (m MapValue[Ctx]) Walk(ctx Ctx) error {
 
 func (m MapValue[Ctx]) Interface() any {
 	return g_reflect.NewAt(m.meta.typ.Elem(), m.arg.p).Elem().Interface()
+}
+
+type ifaceMetadata[Ctx any] struct {
+	typ    g_reflect.Type
+	walker *Walker[Ctx]
+}
+
+// Interface represents an interface value.
+type Interface[Ctx any] struct {
+	meta *ifaceMetadata[Ctx]
+	arg  arg
+}
+
+// IsNil returns if the interface value is nil.
+func (i Interface[Ctx]) IsNil() bool {
+	return *castTo[*any](i.arg.p) == nil
+}
+
+// Walk walks the concrete value of the interface by type.
+// The interface value must not be nil.
+func (i Interface[Ctx]) Walk(ctx Ctx) error {
+	iface := i.Interface()
+	return i.meta.walker.Walk(ctx, iface)
+}
+
+func (i Interface[Ctx]) Interface() any {
+	return g_reflect.NewAt(i.meta.typ, i.arg.p).Elem().Interface()
 }
