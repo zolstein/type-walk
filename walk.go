@@ -1,7 +1,6 @@
 package type_walk
 
 import (
-	"fmt"
 	"reflect"
 	"slices"
 	"unsafe"
@@ -45,30 +44,49 @@ func argFor[T any](ptr *T) Arg[T] {
 	}
 }
 
+type WalkerConfig struct {
+	threadSafe bool
+}
+
+type WalkerOpt func(*WalkerConfig)
+
+var (
+	WithThreadSafe WalkerOpt = func(w *WalkerConfig) {
+		w.threadSafe = true
+	}
+)
+
 // Walker represents a collection of functions that can be used to walk a value using the Walk method.
 type Walker[Ctx any] struct {
-	typeFns    map[g_reflect.Type]*walkFn[Ctx]
-	compileFns [NUM_KIND]unsafe.Pointer
+	getFn fnSrc[Ctx]
 }
 
 // NewWalker creates a new Walker from the registered functions in register.
 // Any new functions that are added to the register after calling NewWalker will not be used by the returned Walker.
-func NewWalker[Ctx any](register *Register[Ctx]) *Walker[Ctx] {
-	typeFns := make(map[g_reflect.Type]*walkFn[Ctx], len(register.typeFns))
-	for i := range register.typeFns {
-		e := &register.typeFns[i]
-		typeFns[e.t] = &e.fn
+func NewWalker[Ctx any](register *Register[Ctx], opts ...WalkerOpt) *Walker[Ctx] {
+	cfg := &WalkerConfig{threadSafe: false}
+	for _, opt := range opts {
+		opt(cfg)
+	}
+	var getFn fnSrc[Ctx]
+	if cfg.threadSafe {
+		getFn = newThreadSafeCompiler(register).getFn
+	} else {
+		getFn = newSimpleCompiler(register).getFn
 	}
 	return &Walker[Ctx]{
-		typeFns:    typeFns,
-		compileFns: register.compileFns,
+		getFn: getFn,
 	}
 }
 
 // Walk walks in, calling the registered for each value it encounters.
 func (w *Walker[Ctx]) Walk(ctx Ctx, in any) error {
+	return walk(w.getFn, ctx, in)
+}
+
+func walk[Ctx any](fnSrc fnSrc[Ctx], ctx Ctx, in any) error {
 	t, p := g_reflect.TypeAndPtrOf(in)
-	fn, err := w.getFn(t)
+	fn, err := fnSrc(t)
 	if err != nil {
 		return err
 	}
@@ -86,195 +104,14 @@ func (w *Walker[Ctx]) Walk(ctx Ctx, in any) error {
 	return (*fn)(ctx, arg)
 }
 
+type fnSrc[Ctx any] func(t g_reflect.Type) (*walkFn[Ctx], error)
+
 var ptrTypes = [NUM_KIND]bool{
 	g_reflect.Ptr:           true,
 	g_reflect.UnsafePointer: true,
 	g_reflect.Map:           true,
 	g_reflect.Chan:          true,
 	g_reflect.Func:          true,
-}
-
-func (w *Walker[Ctx]) getFn(t g_reflect.Type) (fn *walkFn[Ctx], err error) {
-	fn, ok := w.typeFns[t]
-	if !ok {
-		if t == nil {
-			// This panics, rather than returning an error, because it's an easily preventable user error.
-			// Check for nil before calling Walk!
-			// Maybe we should have a way to specify a handler for a nil interface?
-			panic("cannot compile function for nil type")
-		}
-		fn = new(walkFn[Ctx])
-		w.typeFns[t] = fn
-		*fn, err = w.compileFn(t)
-	}
-	return fn, err
-}
-
-func (w *Walker[Ctx]) compileFn(t g_reflect.Type) (walkFn[Ctx], error) {
-	k := t.Kind()
-	fnPtr := w.compileFns[k]
-	if fnPtr == nil {
-		return nil, fmt.Errorf("no registered handler for type kind %v", k)
-	}
-	switch k {
-	case g_reflect.Array:
-		return w.compileArray(t, castTo[CompileArrayFn[Ctx]](fnPtr))
-	case g_reflect.Ptr:
-		return w.compilePtr(t, castTo[CompilePtrFn[Ctx]](fnPtr))
-	case g_reflect.Slice:
-		return w.compileSlice(t, castTo[CompileSliceFn[Ctx]](fnPtr))
-	case g_reflect.Struct:
-		return w.compileStruct(t, castTo[CompileStructFn[Ctx]](fnPtr))
-	case g_reflect.Map:
-		return w.compileMap(t, castTo[CompileMapFn[Ctx]](fnPtr))
-	case g_reflect.Interface:
-		return w.compileInterface(t, castTo[CompileInterfaceFn[Ctx]](fnPtr))
-	default:
-		compileFn := castTo[compileFn[Ctx]](fnPtr)
-		return compileFn(g_reflect.ToReflectType(t)), nil
-	}
-}
-
-func (w *Walker[Ctx]) compileArray(t g_reflect.Type, fn CompileArrayFn[Ctx]) (walkFn[Ctx], error) {
-	arrayWalkFn := fn(g_reflect.ToReflectType(t))
-	elemFn, err := w.getFn(t.Elem())
-	if err != nil {
-		return nil, err
-	}
-	arrayMeta := arrayMetadata[Ctx]{
-		typ:      t,
-		elemSize: t.Elem().Size(),
-		length:   t.Len(),
-		elemFn:   elemFn,
-	}
-	return func(ctx Ctx, arg arg) error {
-		structWalker := Array[Ctx]{meta: &arrayMeta, arg: arg}
-		return arrayWalkFn(ctx, structWalker)
-	}, nil
-}
-
-func (w *Walker[Ctx]) compilePtr(t g_reflect.Type, fn CompilePtrFn[Ctx]) (walkFn[Ctx], error) {
-	ptrWalkFn := fn(g_reflect.ToReflectType(t))
-	elemFn, err := w.getFn(t.Elem())
-	if err != nil {
-		return nil, err
-	}
-	ptrMeta := ptrMetadata[Ctx]{
-		typ:    t,
-		elemFn: elemFn,
-	}
-	return func(ctx Ctx, arg arg) error {
-		structWalker := Ptr[Ctx]{meta: &ptrMeta, arg: arg}
-		return ptrWalkFn(ctx, structWalker)
-	}, nil
-}
-
-func (w *Walker[Ctx]) compileSlice(t g_reflect.Type, fn CompileSliceFn[Ctx]) (walkFn[Ctx], error) {
-	sliceWalkFn := fn(g_reflect.ToReflectType(t))
-	elemFn, err := w.getFn(t.Elem())
-	if err != nil {
-		return nil, err
-	}
-	sliceMeta := sliceMetadata[Ctx]{
-		typ:      t,
-		elemSize: t.Elem().Size(),
-		elemFn:   elemFn,
-	}
-	return func(ctx Ctx, arg arg) error {
-		structWalker := Slice[Ctx]{meta: &sliceMeta, arg: arg}
-		return sliceWalkFn(ctx, structWalker)
-	}, nil
-}
-
-func (w *Walker[Ctx]) compileStruct(t g_reflect.Type, fn CompileStructFn[Ctx]) (walkFn[Ctx], error) {
-	reg := structFieldRegister{
-		typ: t,
-	}
-	structWalkFn := fn(g_reflect.ToReflectType(t), StructFieldRegister{&reg})
-	meta := &structMetadata[Ctx]{
-		typ:       t,
-		fieldInfo: make([]structFieldMetadata[Ctx], len(reg.indexes)),
-	}
-	for i, idx := range reg.indexes {
-		ft := t
-		offsets := []uintptr{0}
-		for i, x := range idx {
-			if i > 0 && ft.Kind() == reflect.Ptr && ft.Elem().Kind() == reflect.Struct {
-				ft = ft.Elem()
-				offsets = append(offsets, 0)
-			}
-			f := ft.Field(x)
-			ft = f.Type
-			offsets[len(offsets)-1] += f.Offset
-		}
-
-		fn, err := w.getFn(ft)
-		if err != nil {
-			return nil, err
-		}
-		meta.fieldInfo[i] = structFieldMetadata[Ctx]{
-			typ:    ft,
-			lookup: lookupFieldFn(offsets),
-			fn:     fn,
-		}
-	}
-	return func(ctx Ctx, arg arg) error {
-		structWalker := Struct[Ctx]{meta: meta, arg: arg}
-		return structWalkFn(ctx, structWalker)
-	}, nil
-}
-
-type lookupFn func(arg) arg
-
-func lookupFieldFn(offsets []uintptr) lookupFn {
-	return func(a arg) arg {
-		for i, offset := range offsets {
-			if i >= 1 {
-				// If len(offsets) >= 1, the lookup goes through at least one pointer. In this case, it's necessarily
-				// behind a pointer, and therefore addressable.
-				a.canAddr = true
-				a.p = *(*unsafe.Pointer)(a.p)
-				if a.p == nil {
-					return arg{}
-				}
-			}
-			a.p = unsafe.Add(a.p, offset)
-		}
-		return a
-	}
-}
-
-func (w *Walker[Ctx]) compileMap(t g_reflect.Type, fn CompileMapFn[Ctx]) (walkFn[Ctx], error) {
-	mapWalkFn := fn(g_reflect.ToReflectType(t))
-	keyFn, err := w.getFn(t.Key())
-	if err != nil {
-		return nil, err
-	}
-	valFn, err := w.getFn(t.Elem())
-	if err != nil {
-		return nil, err
-	}
-	mapMeta := mapMetadata[Ctx]{
-		typ:   t,
-		keyFn: keyFn,
-		valFn: valFn,
-	}
-	return func(ctx Ctx, arg arg) error {
-		mapWalker := Map[Ctx]{meta: &mapMeta, arg: arg}
-		return mapWalkFn(ctx, mapWalker)
-	}, nil
-}
-
-func (w *Walker[Ctx]) compileInterface(t g_reflect.Type, fn CompileInterfaceFn[Ctx]) (walkFn[Ctx], error) {
-	ifaceWalkFn := fn(g_reflect.ToReflectType(t))
-	ifaceMeta := ifaceMetadata[Ctx]{
-		typ:    t,
-		walker: w,
-	}
-	return func(ctx Ctx, arg arg) error {
-		structWalker := Interface[Ctx]{meta: &ifaceMeta, arg: arg}
-		return ifaceWalkFn(ctx, structWalker)
-	}, nil
 }
 
 // StructFieldRegister stores information about which fields to walk within a struct.
@@ -686,8 +523,8 @@ func (m MapValue[Ctx]) Interface() any {
 }
 
 type ifaceMetadata[Ctx any] struct {
-	typ    g_reflect.Type
-	walker *Walker[Ctx]
+	typ   g_reflect.Type
+	fnSrc fnSrc[Ctx]
 }
 
 // Interface represents an interface value.
@@ -705,7 +542,7 @@ func (i Interface[Ctx]) IsNil() bool {
 // The interface value must not be nil.
 func (i Interface[Ctx]) Walk(ctx Ctx) error {
 	iface := i.Interface()
-	return i.meta.walker.Walk(ctx, iface)
+	return walk(i.meta.fnSrc, ctx, iface)
 }
 
 func (i Interface[Ctx]) Interface() any {

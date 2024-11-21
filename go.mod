@@ -5,6 +5,7 @@ go 1.21
 require (
 	github.com/goccy/go-reflect v1.2.0
 	github.com/stretchr/testify v1.9.0
+	github.com/zolstein/sync-map v0.0.0-20241114025029-d8a8d5a801cb
 )
 
 require (
