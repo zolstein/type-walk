@@ -168,27 +168,55 @@ func BenchmarkSimpleJsonSerialize(b *testing.B) {
 		}
 	})
 
-	walker := tw.NewWalker(register)
-	typeFn, err := tw.TypeFnFor[[]*Outer](walker)
-	require.NoError(b, err)
-
-	serializeTypeWalk := func(toSerialize *[]*Outer) {
-		bb.Reset()
-		err := typeFn(&bb, toSerialize)
+	{
+		walker := tw.NewWalker(register)
+		typeFn, err := tw.TypeFnFor[[]*Outer](walker)
 		require.NoError(b, err)
+
+		serializeTypeWalk := func(toSerialize *[]*Outer) {
+			bb.Reset()
+			err := typeFn(&bb, toSerialize)
+			require.NoError(b, err)
+		}
+
+		b.Run("type-walk", func(b *testing.B) {
+			toSerializePtr := &toSerialize
+			runtime.GC()
+			b.ResetTimer()
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				serializeTypeWalk(toSerializePtr)
+				bs := bb.Bytes()
+				_ = bs
+			}
+		})
+
 	}
 
-	b.Run("type-walk", func(b *testing.B) {
-		toSerializePtr := &toSerialize
-		runtime.GC()
-		b.ResetTimer()
-		b.ReportAllocs()
-		for i := 0; i < b.N; i++ {
-			serializeTypeWalk(toSerializePtr)
-			bs := bb.Bytes()
-			_ = bs
+	{
+		walker := tw.NewWalker(register, tw.WithThreadSafe)
+		typeFn, err := tw.TypeFnFor[[]*Outer](walker)
+		require.NoError(b, err)
+
+		serializeTypeWalk := func(toSerialize *[]*Outer) {
+			bb.Reset()
+			err := typeFn(&bb, toSerialize)
+			require.NoError(b, err)
 		}
-	})
+
+		b.Run("type-walk-thread-safe", func(b *testing.B) {
+			toSerializePtr := &toSerialize
+			runtime.GC()
+			b.ResetTimer()
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				serializeTypeWalk(toSerializePtr)
+				bs := bb.Bytes()
+				_ = bs
+			}
+		})
+	}
+
 }
 
 func randString(length int) string {
