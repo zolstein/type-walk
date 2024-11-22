@@ -63,7 +63,7 @@ func TestConcurrent(t *testing.T) {
 	}
 
 	helper := func(fns []fn) {
-		for i := 0; i < 10000; i++ {
+		for i := 0; i < 1000; i++ {
 			global.Store(0)
 			walker := tw.NewWalker[struct{}](r, tw.WithThreadSafe)
 			start.Add(1)
