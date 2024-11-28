@@ -183,12 +183,6 @@ func (s Struct[Ctx]) Field(idx int) StructField[Ctx] {
 	}
 }
 
-// Walk walks a registered field of the struct value.
-// idx must be in the range [0..NumFields())
-func (s Struct[Ctx]) Walk(ctx Ctx, idx int) error {
-	return s.Field(idx).Walk(ctx)
-}
-
 func (s Struct[Ctx]) Interface() any {
 	return g_reflect.NewAt(s.meta.typ, s.arg.p).Elem().Interface()
 }
@@ -264,12 +258,6 @@ func (a Array[Ctx]) Elem(idx int) ArrayElem[Ctx] {
 	}
 }
 
-// Walk walks an element of the array value.
-// idx must be in the range [0..Len())
-func (a Array[Ctx]) Walk(ctx Ctx, idx int) error {
-	return a.Elem(idx).Walk(ctx)
-}
-
 func (a Array[Ctx]) Interface() any {
 	return g_reflect.NewAt(a.meta.typ, a.arg.p).Elem().Interface()
 }
@@ -333,12 +321,6 @@ func (s Slice[Ctx]) Elem(idx int) SliceElem[Ctx] {
 		meta: s.meta,
 		arg:  elemArg,
 	}
-}
-
-// Walk walks an element of the slice value.
-// idx must be in the range [0..Len())
-func (s Slice[Ctx]) Walk(ctx Ctx, idx int) error {
-	return s.Elem(idx).Walk(ctx)
 }
 
 func (a Slice[Ctx]) Interface() any {
@@ -480,16 +462,6 @@ func (m MapEntry[Ctx]) Value() MapValue[Ctx] {
 			canAddr: false,
 		},
 	}
-}
-
-// WalkKey walks the key associated with this MapEntry.
-func (m MapEntry[Ctx]) WalkKey(ctx Ctx) error {
-	return m.Key().Walk(ctx)
-}
-
-// WalkValue walks the value associated with this MapEntry.
-func (m MapEntry[Ctx]) WalkValue(ctx Ctx) error {
-	return m.Value().Walk(ctx)
 }
 
 // MapKey represents a key in the map.

@@ -280,7 +280,7 @@ func TestRegisterCompileArrayFn(t *testing.T) {
 				if i > 0 {
 					ctx.WriteRune(',')
 				}
-				err := aw.Walk(ctx, i)
+				err := aw.Elem(i).Walk(ctx)
 				if err != nil {
 					return err
 				}
@@ -327,7 +327,7 @@ func TestRegisterCompileSliceFn(t *testing.T) {
 				if i > 0 {
 					ctx.WriteRune(',')
 				}
-				err := sw.Walk(ctx, i)
+				err := sw.Elem(i).Walk(ctx)
 				if err != nil {
 					return err
 				}
@@ -490,12 +490,12 @@ func TestRegisterCompileMapFn(t *testing.T) {
 					ctx.WriteRune(',')
 				}
 				e := iter.Entry()
-				err := e.WalkKey(ctx)
+				err := e.Key().Walk(ctx)
 				if err != nil {
 					return err
 				}
 				ctx.WriteRune(':')
-				err = e.WalkValue(ctx)
+				err = e.Value().Walk(ctx)
 				if err != nil {
 					return err
 				}
@@ -817,7 +817,7 @@ func settableSliceHelper(t *testing.T) {
 		register.RegisterCompileSliceFn(func(typ reflect.Type) tw.WalkSliceFn[struct{}] {
 			return func(ctx struct{}, s tw.Slice[struct{}]) error {
 				for i := 0; i < s.Len(); i++ {
-					err := s.Walk(ctx, i)
+					err := s.Elem(i).Walk(ctx)
 					if err != nil {
 						return err
 					}
@@ -869,7 +869,7 @@ func settableArrayHelper(t *testing.T) {
 		register.RegisterCompileArrayFn(func(typ reflect.Type) tw.WalkArrayFn[struct{}] {
 			return func(ctx struct{}, a tw.Array[struct{}]) error {
 				for i := 0; i < a.Len(); i++ {
-					err := a.Walk(ctx, i)
+					err := a.Elem(i).Walk(ctx)
 					if err != nil {
 						return err
 					}
@@ -925,7 +925,7 @@ func settableStructHelper(t *testing.T) {
 			}
 			return func(ctx struct{}, s tw.Struct[struct{}]) error {
 				for i := 0; i < s.NumFields(); i++ {
-					err := s.Walk(ctx, i)
+					err := s.Field(i).Walk(ctx)
 					if err != nil {
 						return err
 					}
@@ -1034,11 +1034,11 @@ func settableMapHelper(t *testing.T) {
 				iter := m.Iter()
 				for iter.Next() {
 					entry := iter.Entry()
-					err := entry.WalkKey(ctx)
+					err := entry.Key().Walk(ctx)
 					if err != nil {
 						return err
 					}
-					err = entry.WalkValue(ctx)
+					err = entry.Value().Walk(ctx)
 					if err != nil {
 						return err
 					}
@@ -1448,7 +1448,7 @@ func printStruct(fields []reflect.StructField) tw.WalkStructFn[*strings.Builder]
 			ctx.WriteString(field.Name)
 			ctx.WriteRune(':')
 
-			err := sw.Walk(ctx, i)
+			err := sw.Field(i).Walk(ctx)
 			if err != nil {
 				return err
 			}
