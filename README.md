@@ -1,4 +1,4 @@
-# type-walk - Fast reflection made easy
+# type-walk - Fast reflection for mere mortals
 
 ## Warning: Experimental
 
@@ -56,20 +56,21 @@ A walk function (`WalkFn`) has the following type definition:
 `type WalkFn[Ctx any, In any] func(Ctx, Arg[In]) error`
 
 `In` is the type being walked. `Arg[In]` is a wrapper type, which represents a value of type `In` in the context of the
-walk. The `In` value can be read with `Get` method, and (if it represents an addressable value) can be set with `Set`.
+walk. The `In` value can be read with`Get`, and (if it represents an addressable value) can be set with `Set`.
 `CanSet` can be used to check if the arg is settable.
 
 `Ctx` is a "do whatever you want" parameter. It's a value that's passed along with the values you're walking through the
 program. You can use it to modify the way you process a value, pass information between levels of the walk, or expose
 results to the rest of your program after the walk finishes. (For example, if you used type-walk to write a JSON
-serializer, `Ctx` might contain an io.Writer to serialize to, and track the indentation level.) However, note that `Ctx`
-must be the same type for the entire walk - different In types can't use different Ctx types.
+serializer, `Ctx` might contain an io.Writer to serialize to, and an integer to track the indentation level.) However,
+note that `Ctx` must be the same type for the entire walk - different In types can't use different Ctx types.
 
 We choose the walk function to apply for a value of a particular type in one of two ways:
 
 1. A function for handling a specific type was registered directly - in this case, we just call that function.
-2. No function was registered for that type, so we look for a function to compile one for types based on its kind.
-   Assuming we have one, we compile a new function for the type, save it for future use, then call it.
+2. No function was registered for that type, so we look for a function to compile one for type based on its kind.
+   Assuming we have a compile function for the kind, we compile a new function for the type, save it for future use,
+   then call it.
 
 (If we don't have a compile function registered for that kind, we give up and return an error.)
 
@@ -90,7 +91,7 @@ any types of kind Int, not _just_ the exact type `int`. For instance, if you def
 CompileFn for `int` would be used to compile a WalkFn for `ID`.
 
 If you want a bit more reflective magic in your WalkFn, and having access to just the builtin value type isn't enough,
-consider that most of the time the CompileFn will return a closure, which will contain the type value. Ex:
+consider that your CompileFn can return a closure that contains the `reflect.Type` value. Ex:
 
 ```
 var _ tw.CompileFn[any, int] = func(typ reflect.Type) WalkFn[Ctx, int] {
@@ -107,19 +108,40 @@ What about structs, and slices, and arrays? type-walk supports this too, and thi
 really comes into play. For each of these, it provides specialized kinds of functions.
 
 ```
-type SliceWalkFn[Ctx any] func(Ctx, Slice[Ctx]) error
-type CompileSliceFn[Ctx any] func(reflect.Type) (SliceWalkFn[Ctx], error)
+type WalkSliceFn[Ctx any] func(Ctx, Slice[Ctx]) error
+type CompileSliceFn[Ctx any] func(reflect.Type) WalkSliceFn[Ctx]
 ```
 
-Slice represents a slice of any type, but in the context of the SliceWalkFn returned by a CompileSliceFn, it will
-always contain elements of the reflect.Type. Slice lets you get the length and capacity of the slice, as well as
-whether it's nil. Most importantly, though, it lets you get an element at one of its indexes, with Slice.Elem(idx), and 
-you can call the registered WalkFn on that element with SliceElem.Walk(ctx).
+`Slice` represents a slice of any type, but in the context of the `WalkSliceFn` returned by a `CompileSliceFn`, it will
+always contain elements of the `reflect.Type`. `Slice` lets you get the length and capacity of the slice, as well as
+whether it's nil. Most importantly, though, it lets you get an element at one of its indexes, with `Elem`, and
+you can call the registered `WalkFn` on that element with `Walk`.
 
 All the other more complicated types have similar Walk and Compile functions, as well as similar types representing
 their values. Importantly, rather than giving you direct access to the internal values, they provide stub values that
 let you walk the inner values recursively. This is key to the model of type-walk, and is part of what allows it to walk
-values efficiently - inside the SliceElem, it knows what the type of the internal values is and what function it should call on them.
+values efficiently - inside the `SliceElem`, it knows what the type of the internal values is and what function it
+should call on them.
+
+### Structs
+
+Structs work much like other complex kinds, but they are more complicated in that they may have any number of sub-values
+(fields) of any number of distinct types. (By comparison, a slice may have any number of sub-values, but they will all
+have the same type.) Furthermore, Go's `reflect` package allows access to fields of nested structs, and it is useful for
+type-walk to provide the same functionality. For these reasons, it is sometimes useful to compile a `WalkStructFn` that
+cannot walk _all_ fields of the struct.
+
+To accommodate this, `CompileStructFn` has a different type signature:
+
+```
+type CompileStructFn[Ctx any] func(reflect.Type, StructFieldRegister) WalkStructFn[Ctx]
+```
+
+`StructFieldRegister` is a type that tracks which fields of a struct should be made available to the `WalkStructFn`.
+It has two relevant methods: `RegisterField(fieldNum int) int` to register a field by its field number, and
+`RegisterFieldByIndex(index []int) int` to register a potentially nested field by its index path. Only fields that are
+registered with one of these methods will be available in the `StructWalkFn`. Both methods return an int, which is the
+index to use to look up the `StructField` from the `Struct` of this type.
 
 ## Virtues
 
