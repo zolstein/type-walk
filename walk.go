@@ -17,6 +17,10 @@ type walkFn[Ctx any] func(Ctx, arg) error
 // Must return walkFn[Ctx] for provided type.
 type compileFn[Ctx any] func(reflect.Type) walkFn[Ctx]
 
+// TypeFn is a function to walk a value of a particular type.
+//
+// Despite taking an argument of type (*In) it is walked as a value of type In.
+// If a function to walk a (*In) is registered, it will not be called.
 type TypeFn[Ctx any, In any] func(ctx Ctx, in *In) error
 
 // TypeFnFor returns a TypeFn to walk a value of a particular type.
@@ -44,14 +48,16 @@ func argFor[T any](ptr *T) Arg[T] {
 	}
 }
 
-type WalkerConfig struct {
+type walkerConfig struct {
 	threadSafe bool
 }
 
-type WalkerOpt func(*WalkerConfig)
+// WalkerOpt is an option to configure a new walker.
+type WalkerOpt func(*walkerConfig)
 
 var (
-	WithThreadSafe WalkerOpt = func(w *WalkerConfig) {
+	// WithThreadSafe makes a Walker safe to use concurrently.
+	WithThreadSafe WalkerOpt = func(w *walkerConfig) {
 		w.threadSafe = true
 	}
 )
@@ -64,7 +70,7 @@ type Walker[Ctx any] struct {
 // NewWalker creates a new Walker from the registered functions in register.
 // Any new functions that are added to the register after calling NewWalker will not be used by the returned Walker.
 func NewWalker[Ctx any](register *Register[Ctx], opts ...WalkerOpt) *Walker[Ctx] {
-	cfg := &WalkerConfig{threadSafe: false}
+	cfg := &walkerConfig{threadSafe: false}
 	for _, opt := range opts {
 		opt(cfg)
 	}
@@ -183,6 +189,7 @@ func (s Struct[Ctx]) Field(idx int) StructField[Ctx] {
 	}
 }
 
+// Interface returns the underlying value as an interface.
 func (s Struct[Ctx]) Interface() any {
 	return g_reflect.NewAt(s.meta.typ, s.arg.p).Elem().Interface()
 }
@@ -218,6 +225,7 @@ func (f StructField[Ctx]) Walk(ctx Ctx) error {
 	return (*f.meta.fn)(ctx, f.arg)
 }
 
+// Interface returns the underlying value as an interface.
 func (f StructField[Ctx]) Interface() any {
 	return g_reflect.NewAt(f.meta.typ, f.arg.p).Elem().Interface()
 }
@@ -258,6 +266,7 @@ func (a Array[Ctx]) Elem(idx int) ArrayElem[Ctx] {
 	}
 }
 
+// Interface returns the underlying value as an interface.
 func (a Array[Ctx]) Interface() any {
 	return g_reflect.NewAt(a.meta.typ, a.arg.p).Elem().Interface()
 }
@@ -273,6 +282,7 @@ func (e ArrayElem[Ctx]) Walk(ctx Ctx) error {
 	return (*e.meta.elemFn)(ctx, e.arg)
 }
 
+// Interface returns the underlying value as an interface.
 func (e ArrayElem[Ctx]) Interface() any {
 	return g_reflect.NewAt(e.meta.typ.Elem(), e.arg.p).Elem().Interface()
 }
@@ -323,6 +333,7 @@ func (s Slice[Ctx]) Elem(idx int) SliceElem[Ctx] {
 	}
 }
 
+// Interface returns the underlying value as an interface.
 func (a Slice[Ctx]) Interface() any {
 	return g_reflect.NewAt(a.meta.typ, a.arg.p).Elem().Interface()
 }
@@ -343,6 +354,7 @@ func (e SliceElem[Ctx]) Walk(ctx Ctx) error {
 	return (*e.meta.elemFn)(ctx, e.arg)
 }
 
+// Interface returns the underlying value as an interface.
 func (e SliceElem[Ctx]) Interface() any {
 	return g_reflect.NewAt(e.meta.typ.Elem(), e.arg.p).Elem().Interface()
 }
@@ -374,6 +386,7 @@ func (p Ptr[Ctx]) Walk(ctx Ctx) error {
 	return (*p.meta.elemFn)(ctx, elemArg)
 }
 
+// Interface returns the underlying value as an interface.
 func (p Ptr[Ctx]) Interface() any {
 	return g_reflect.NewAt(p.meta.typ, p.arg.p).Elem().Interface()
 }
@@ -405,6 +418,7 @@ func (m Map[Ctx]) Iter() MapIter[Ctx] {
 	}
 }
 
+// Interface returns the underlying value as an interface.
 func (m Map[Ctx]) Interface() any {
 	return g_reflect.NewAt(m.meta.typ, m.arg.p).Elem().Interface()
 }
@@ -475,6 +489,7 @@ func (m MapKey[Ctx]) Walk(ctx Ctx) error {
 	return (*m.meta.keyFn)(ctx, m.arg)
 }
 
+// Interface returns the underlying value as an interface.
 func (m MapKey[Ctx]) Interface() any {
 	return g_reflect.NewAt(m.meta.typ.Key(), m.arg.p).Elem().Interface()
 }
@@ -490,6 +505,7 @@ func (m MapValue[Ctx]) Walk(ctx Ctx) error {
 	return (*m.meta.valFn)(ctx, m.arg)
 }
 
+// Interface returns the underlying value as an interface.
 func (m MapValue[Ctx]) Interface() any {
 	return g_reflect.NewAt(m.meta.typ.Elem(), m.arg.p).Elem().Interface()
 }
@@ -517,6 +533,7 @@ func (i Interface[Ctx]) Walk(ctx Ctx) error {
 	return walk(i.meta.fnSrc, ctx, iface)
 }
 
+// Interface returns the underlying value as an interface.
 func (i Interface[Ctx]) Interface() any {
 	return g_reflect.NewAt(i.meta.typ, i.arg.p).Elem().Interface()
 }
