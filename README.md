@@ -1,3 +1,4 @@
+[![Go Reference](https://pkg.go.dev/badge/github.com/zolstein/type-walk.svg)](https://pkg.go.dev/github.com/zolstein/type-walk)
 # type-walk - Fast reflection for mere mortals
 
 ## Warning: Experimental
