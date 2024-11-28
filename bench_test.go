@@ -125,7 +125,7 @@ func BenchmarkSimpleJsonSerialize(b *testing.B) {
 				if i > 0 {
 					bb.WriteRune(',')
 				}
-				err := s.Walk(ctx, i)
+				err := s.Elem(i).Walk(ctx)
 				if err != nil {
 					return err
 				}
@@ -150,7 +150,7 @@ func BenchmarkSimpleJsonSerialize(b *testing.B) {
 				bb.WriteString(fields[i].Name)
 				bb.WriteRune('"')
 				bb.WriteRune(':')
-				err := s.Walk(ctx, i)
+				err := s.Field(i).Walk(ctx)
 				if err != nil {
 					return err
 				}
