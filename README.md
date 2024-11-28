@@ -1,17 +1,20 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/zolstein/type-walk.svg)](https://pkg.go.dev/github.com/zolstein/type-walk)
+
 # type-walk - Fast reflection for mere mortals
 
 ## Warning: Experimental
 
-type-walk is currently in a very early state. Features are currently missing. It has been minimally tested.
-Documentation is sparse. All APIs are subject to change. It has sharp corners, and you could cut yourself on them.
+type-walk is an experimental library. It probably has enough functionality to use in some real projects, but it may
+still lack features, and adding them over time may change the API. I've tried to test all possible edge cases and round
+off the sharp corners, but it's a big ball of unsafe code and it's possible I've missed some.
 
-You absolutely should not use this library for anything real... yet. I plan to improve it over time, and I hope that
-some people see value in it and choose to play around with it in unimportant places, file bugs, and offer suggestions
-for improvement. In order to get better, it needs to be used.
+I would not run this code in production systems... yet. I plan to improve it over time, and I hope that some people see
+value in it and choose to play around with it in non-critical places, file bugs, and offer suggestions for improvement.
+In order to get better, it needs to be used.
 
-However, if you use it for anything real, in all probability it will blow up in your face terribly, and you will have
-only yourself you blame. You have literally been warned.
+If you use this in production, do so at your own risk. Know that the benefits are critical to your project. Audit my
+code yourself, and test your own code rigorously. Be prepared to update your code in response to API changes or freeze
+the library to a specific version.
 
 ## Why does this even exist?
 
