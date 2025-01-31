@@ -14,7 +14,7 @@ import (
 func TestConcurrent(t *testing.T) {
 	r := tw.NewRegister[struct{}]()
 	var global atomic.Int64
-	r.RegisterCompileInt64Fn(func(r reflect.Type) tw.WalkFn[struct{}, int64] {
+	tw.RegisterCompileInt64Fn(r, func(r reflect.Type) tw.WalkFn[struct{}, int64] {
 		return func(s struct{}, a tw.Arg[int64]) error {
 			global.Add(a.Get())
 			return nil
