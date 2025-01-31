@@ -86,93 +86,93 @@ func RegisterTypeFn[Ctx any, In any](register *Register[Ctx], fn WalkFn[Ctx, In]
 }
 
 // RegisterCompileBoolFn registers a compile function for types of kind Bool.
-func (r *Register[Ctx]) RegisterCompileBoolFn(fn CompileFn[Ctx, bool]) {
-	r.compileFns[reflect.Bool] = eraseTypedCompileFn(fn)
+func RegisterCompileBoolFn[Ctx any](register *Register[Ctx], fn CompileFn[Ctx, bool]) {
+	register.compileFns[reflect.Bool] = eraseTypedCompileFn(fn)
 }
 
 // RegisterCompileIntFn registers a compile function for types of kind Int.
-func (r *Register[Ctx]) RegisterCompileIntFn(fn CompileFn[Ctx, int]) {
-	r.compileFns[reflect.Int] = eraseTypedCompileFn(fn)
+func RegisterCompileIntFn[Ctx any](register *Register[Ctx], fn CompileFn[Ctx, int]) {
+	register.compileFns[reflect.Int] = eraseTypedCompileFn(fn)
 }
 
 // RegisterCompileInt8Fn registers a compile function for types of kind Int8.
-func (r *Register[Ctx]) RegisterCompileInt8Fn(fn CompileFn[Ctx, int8]) {
-	r.compileFns[reflect.Int8] = eraseTypedCompileFn(fn)
+func RegisterCompileInt8Fn[Ctx any](register *Register[Ctx], fn CompileFn[Ctx, int8]) {
+	register.compileFns[reflect.Int8] = eraseTypedCompileFn(fn)
 }
 
 // RegisterCompileInt16Fn registers a compile function for types of kind Int16.
-func (r *Register[Ctx]) RegisterCompileInt16Fn(fn CompileFn[Ctx, int16]) {
-	r.compileFns[reflect.Int16] = eraseTypedCompileFn(fn)
+func RegisterCompileInt16Fn[Ctx any](register *Register[Ctx], fn CompileFn[Ctx, int16]) {
+	register.compileFns[reflect.Int16] = eraseTypedCompileFn(fn)
 }
 
 // RegisterCompileInt32Fn registers a compile function for types of kind Int32.
-func (r *Register[Ctx]) RegisterCompileInt32Fn(fn CompileFn[Ctx, int32]) {
-	r.compileFns[reflect.Int32] = eraseTypedCompileFn(fn)
+func RegisterCompileInt32Fn[Ctx any](register *Register[Ctx], fn CompileFn[Ctx, int32]) {
+	register.compileFns[reflect.Int32] = eraseTypedCompileFn(fn)
 }
 
 // RegisterCompileInt64Fn registers a compile function for types of kind Int64.
-func (r *Register[Ctx]) RegisterCompileInt64Fn(fn CompileFn[Ctx, int64]) {
-	r.compileFns[reflect.Int64] = eraseTypedCompileFn(fn)
+func RegisterCompileInt64Fn[Ctx any](register *Register[Ctx], fn CompileFn[Ctx, int64]) {
+	register.compileFns[reflect.Int64] = eraseTypedCompileFn(fn)
 }
 
 // RegisterCompileUintFn registers a compile function for types of kind Uint.
-func (r *Register[Ctx]) RegisterCompileUintFn(fn CompileFn[Ctx, uint]) {
-	r.compileFns[reflect.Uint] = eraseTypedCompileFn(fn)
+func RegisterCompileUintFn[Ctx any](register *Register[Ctx], fn CompileFn[Ctx, uint]) {
+	register.compileFns[reflect.Uint] = eraseTypedCompileFn(fn)
 }
 
 // RegisterCompileUint8Fn registers a compile function for types of kind Uint8.
-func (r *Register[Ctx]) RegisterCompileUint8Fn(fn CompileFn[Ctx, uint8]) {
-	r.compileFns[reflect.Uint8] = eraseTypedCompileFn(fn)
+func RegisterCompileUint8Fn[Ctx any](register *Register[Ctx], fn CompileFn[Ctx, uint8]) {
+	register.compileFns[reflect.Uint8] = eraseTypedCompileFn(fn)
 }
 
 // RegisterCompileUint16Fn registers a compile function for types of kind Uint16.
-func (r *Register[Ctx]) RegisterCompileUint16Fn(fn CompileFn[Ctx, uint16]) {
-	r.compileFns[reflect.Uint16] = eraseTypedCompileFn(fn)
+func RegisterCompileUint16Fn[Ctx any](register *Register[Ctx], fn CompileFn[Ctx, uint16]) {
+	register.compileFns[reflect.Uint16] = eraseTypedCompileFn(fn)
 }
 
 // RegisterCompileUint32Fn registers a compile function for types of kind Uint32.
-func (r *Register[Ctx]) RegisterCompileUint32Fn(fn CompileFn[Ctx, uint32]) {
-	r.compileFns[reflect.Uint32] = eraseTypedCompileFn(fn)
+func RegisterCompileUint32Fn[Ctx any](register *Register[Ctx], fn CompileFn[Ctx, uint32]) {
+	register.compileFns[reflect.Uint32] = eraseTypedCompileFn(fn)
 }
 
 // RegisterCompileUint64Fn registers a compile function for types of kind Uint64.
-func (r *Register[Ctx]) RegisterCompileUint64Fn(fn CompileFn[Ctx, uint64]) {
-	r.compileFns[reflect.Uint64] = eraseTypedCompileFn(fn)
+func RegisterCompileUint64Fn[Ctx any](register *Register[Ctx], fn CompileFn[Ctx, uint64]) {
+	register.compileFns[reflect.Uint64] = eraseTypedCompileFn(fn)
 }
 
 // RegisterCompileUintptrFn registers a compile function for types of kind Uintptr.
-func (r *Register[Ctx]) RegisterCompileUintptrFn(fn CompileFn[Ctx, uintptr]) {
-	r.compileFns[reflect.Uintptr] = eraseTypedCompileFn(fn)
+func RegisterCompileUintptrFn[Ctx any](register *Register[Ctx], fn CompileFn[Ctx, uintptr]) {
+	register.compileFns[reflect.Uintptr] = eraseTypedCompileFn(fn)
 }
 
 // RegisterCompileFloat32Fn registers a compile function for types of kind Float32.
-func (r *Register[Ctx]) RegisterCompileFloat32Fn(fn CompileFn[Ctx, float32]) {
-	r.compileFns[reflect.Float32] = eraseTypedCompileFn(fn)
+func RegisterCompileFloat32Fn[Ctx any](register *Register[Ctx], fn CompileFn[Ctx, float32]) {
+	register.compileFns[reflect.Float32] = eraseTypedCompileFn(fn)
 }
 
 // RegisterCompileFloat64Fn registers a compile function for types of kind Float64.
-func (r *Register[Ctx]) RegisterCompileFloat64Fn(fn CompileFn[Ctx, float64]) {
-	r.compileFns[reflect.Float64] = eraseTypedCompileFn(fn)
+func RegisterCompileFloat64Fn[Ctx any](register *Register[Ctx], fn CompileFn[Ctx, float64]) {
+	register.compileFns[reflect.Float64] = eraseTypedCompileFn(fn)
 }
 
 // RegisterCompileComplex64Fn registers a compile function for types of kind Complex64.
-func (r *Register[Ctx]) RegisterCompileComplex64Fn(fn CompileFn[Ctx, complex64]) {
-	r.compileFns[reflect.Complex64] = eraseTypedCompileFn(fn)
+func RegisterCompileComplex64Fn[Ctx any](register *Register[Ctx], fn CompileFn[Ctx, complex64]) {
+	register.compileFns[reflect.Complex64] = eraseTypedCompileFn(fn)
 }
 
 // RegisterCompileComplex128Fn registers a compile function for types of kind Complex128.
-func (r *Register[Ctx]) RegisterCompileComplex128Fn(fn CompileFn[Ctx, complex128]) {
-	r.compileFns[reflect.Complex128] = eraseTypedCompileFn(fn)
+func RegisterCompileComplex128Fn[Ctx any](register *Register[Ctx], fn CompileFn[Ctx, complex128]) {
+	register.compileFns[reflect.Complex128] = eraseTypedCompileFn(fn)
 }
 
 // RegisterCompileStringFn registers a compile function for types of kind String.
-func (r *Register[Ctx]) RegisterCompileStringFn(fn CompileFn[Ctx, string]) {
-	r.compileFns[reflect.String] = eraseTypedCompileFn(fn)
+func RegisterCompileStringFn[Ctx any](register *Register[Ctx], fn CompileFn[Ctx, string]) {
+	register.compileFns[reflect.String] = eraseTypedCompileFn(fn)
 }
 
 // RegisterCompileUnsafePointerFn registers a compile function for types of kind UnsafePointer.
-func (r *Register[Ctx]) RegisterCompileUnsafePointerFn(fn CompileFn[Ctx, unsafe.Pointer]) {
-	r.compileFns[reflect.UnsafePointer] = eraseTypedCompileFn(fn)
+func RegisterCompileUnsafePointerFn[Ctx any](register *Register[Ctx], fn CompileFn[Ctx, unsafe.Pointer]) {
+	register.compileFns[reflect.UnsafePointer] = eraseTypedCompileFn(fn)
 }
 
 // CompileStructFn defines the function type that will be called to generate a WalkStructFn when a struct value is
@@ -183,8 +183,8 @@ type CompileStructFn[Ctx any] func(reflect.Type, StructFieldRegister) WalkStruct
 type WalkStructFn[Ctx any] func(Ctx, Struct[Ctx]) error
 
 // RegisterCompileStructFn registers a compile function for types of kind Struct.
-func (r *Register[Ctx]) RegisterCompileStructFn(fn CompileStructFn[Ctx]) {
-	r.compileFns[reflect.Struct] = eraseCompileStructFn(fn)
+func RegisterCompileStructFn[Ctx any](register *Register[Ctx], fn CompileStructFn[Ctx]) {
+	register.compileFns[reflect.Struct] = eraseCompileStructFn(fn)
 }
 
 // CompileArrayFn defines the function type that will be called to generate a WalkArrayFn when an array value is
@@ -194,8 +194,9 @@ type CompileArrayFn[Ctx any] func(reflect.Type) WalkArrayFn[Ctx]
 // WalkArrayFn defines the function that will be called when an array value is encountered while walking.
 type WalkArrayFn[Ctx any] func(Ctx, Array[Ctx]) error
 
-func (r *Register[Ctx]) RegisterCompileArrayFn(fn CompileArrayFn[Ctx]) {
-	r.compileFns[reflect.Array] = eraseCompileArrayFn(fn)
+// RegisterCompileArrayFn registers a compile function for types of kind Array.
+func RegisterCompileArrayFn[Ctx any](register *Register[Ctx], fn CompileArrayFn[Ctx]) {
+	register.compileFns[reflect.Array] = eraseCompileArrayFn(fn)
 }
 
 // CompilePtrFn defines the function type that will be called to generate a WalkPtrFn when a pointer value is
@@ -205,8 +206,9 @@ type CompilePtrFn[Ctx any] func(reflect.Type) WalkPtrFn[Ctx]
 // WalkPtrFn defines the function that will be called when a pointer value is encountered while walking.
 type WalkPtrFn[Ctx any] func(Ctx, Ptr[Ctx]) error
 
-func (r *Register[Ctx]) RegisterCompilePtrFn(fn CompilePtrFn[Ctx]) {
-	r.compileFns[reflect.Ptr] = eraseCompilePtrFn(fn)
+// RegisterCompilePtrFn registers a compile function for types of kind Ptr.
+func RegisterCompilePtrFn[Ctx any](register *Register[Ctx], fn CompilePtrFn[Ctx]) {
+	register.compileFns[reflect.Ptr] = eraseCompilePtrFn(fn)
 }
 
 // CompileSliceFn defines the function type that will be called to generate a WalkSliceFn when a slice value is
@@ -216,8 +218,9 @@ type CompileSliceFn[Ctx any] func(reflect.Type) WalkSliceFn[Ctx]
 // WalkSliceFn defines the function that will be called when a slice value is encountered while walking.
 type WalkSliceFn[Ctx any] func(Ctx, Slice[Ctx]) error
 
-func (r *Register[Ctx]) RegisterCompileSliceFn(fn CompileSliceFn[Ctx]) {
-	r.compileFns[reflect.Slice] = eraseCompileSliceFn(fn)
+// RegisterCompileSliceFn registers a compile function for types of kind Slice.
+func RegisterCompileSliceFn[Ctx any](register *Register[Ctx], fn CompileSliceFn[Ctx]) {
+	register.compileFns[reflect.Slice] = eraseCompileSliceFn(fn)
 }
 
 // CompileMapFn defines the function type that will be called to generate a WalkMapFn when a map value is
@@ -227,8 +230,9 @@ type CompileMapFn[Ctx any] func(reflect.Type) WalkMapFn[Ctx]
 // WalkMapFn defines the function that will be called when a map value is encountered while walking.
 type WalkMapFn[Ctx any] func(Ctx, Map[Ctx]) error
 
-func (r *Register[Ctx]) RegisterCompileMapFn(fn CompileMapFn[Ctx]) {
-	r.compileFns[reflect.Map] = eraseCompileMapFn(fn)
+// RegisterCompileMapFn registers a compile function for types of kind Map.
+func RegisterCompileMapFn[Ctx any](register *Register[Ctx], fn CompileMapFn[Ctx]) {
+	register.compileFns[reflect.Map] = eraseCompileMapFn(fn)
 }
 
 // CompileInterfaceFn defines the function type that will be called to generate a WalkInterfaceFn when an interface
@@ -238,8 +242,9 @@ type CompileInterfaceFn[Ctx any] func(reflect.Type) WalkInterfaceFn[Ctx]
 // WalkInterfaceFn defines the function that will be called when an interface value is encountered while walking.
 type WalkInterfaceFn[Ctx any] func(Ctx, Interface[Ctx]) error
 
-func (r *Register[Ctx]) RegisterCompileInterfaceFn(fn CompileInterfaceFn[Ctx]) {
-	r.compileFns[reflect.Interface] = eraseCompileInterfaceFn(fn)
+// RegisterCompileInterfaceFn registers a compile function for types of kind Interface.
+func RegisterCompileInterfaceFn[Ctx any](register *Register[Ctx], fn CompileInterfaceFn[Ctx]) {
+	register.compileFns[reflect.Interface] = eraseCompileInterfaceFn(fn)
 }
 
 func eraseTypedCompileFn[Ctx any, In any](fn CompileFn[Ctx, In]) unsafe.Pointer {

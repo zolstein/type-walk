@@ -26,19 +26,19 @@ func Example_prettyPrint() {
 	register := tw.NewRegister[Ctx]()
 
 	// For simple types, just serialize into the buffer.
-	register.RegisterCompileBoolFn(func(typ reflect.Type) tw.WalkFn[Ctx, bool] {
+	tw.RegisterCompileBoolFn(register, func(typ reflect.Type) tw.WalkFn[Ctx, bool] {
 		return func(ctx Ctx, v tw.Bool) error {
 			_, err := fmt.Fprintf(ctx.Buffer, "%t", v.Get())
 			return err
 		}
 	})
-	register.RegisterCompileIntFn(func(typ reflect.Type) tw.WalkFn[Ctx, int] {
+	tw.RegisterCompileIntFn(register, func(typ reflect.Type) tw.WalkFn[Ctx, int] {
 		return func(ctx Ctx, v tw.Int) error {
 			_, err := fmt.Fprintf(ctx.Buffer, "%d", v.Get())
 			return err
 		}
 	})
-	register.RegisterCompileStringFn(func(typ reflect.Type) tw.WalkFn[Ctx, string] {
+	tw.RegisterCompileStringFn(register, func(typ reflect.Type) tw.WalkFn[Ctx, string] {
 		return func(ctx Ctx, v tw.String) error {
 			_, err := fmt.Fprintf(ctx.Buffer, `"%s"`, v.Get())
 			return err
@@ -46,7 +46,7 @@ func Example_prettyPrint() {
 	})
 
 	// For pointers, handle nil, otherwise handle recursively.
-	register.RegisterCompilePtrFn(func(typ reflect.Type) tw.WalkPtrFn[Ctx] {
+	tw.RegisterCompilePtrFn(register, func(typ reflect.Type) tw.WalkPtrFn[Ctx] {
 		return func(ctx Ctx, p tw.Ptr[Ctx]) error {
 			if p.IsNil() {
 				_, _ = ctx.Buffer.WriteString("nil")
@@ -57,7 +57,7 @@ func Example_prettyPrint() {
 	})
 
 	// For slices, handle each element, setting up the correct indentation.
-	register.RegisterCompileSliceFn(func(typ reflect.Type) tw.WalkSliceFn[Ctx] {
+	tw.RegisterCompileSliceFn(register, func(typ reflect.Type) tw.WalkSliceFn[Ctx] {
 		return func(ctx Ctx, p tw.Slice[Ctx]) error {
 			if p.IsNil() {
 				_, err := fmt.Fprintf(ctx.Buffer, "nil")
@@ -82,7 +82,7 @@ func Example_prettyPrint() {
 
 	// For structs, when compiling, register the fields and track the field names.
 	// When walking, handle each element, printing the correct name and setting up the correct indentation.
-	register.RegisterCompileStructFn(func(typ reflect.Type, r tw.StructFieldRegister) tw.WalkStructFn[Ctx] {
+	tw.RegisterCompileStructFn(register, func(typ reflect.Type, r tw.StructFieldRegister) tw.WalkStructFn[Ctx] {
 		fieldNames := make([]string, typ.NumField())
 		for i := 0; i < typ.NumField(); i++ {
 			idx := r.RegisterField(i)

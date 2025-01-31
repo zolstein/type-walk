@@ -85,24 +85,24 @@ func registerCtxTypeFnHelper[Ctx any](t *testing.T) {
 }
 
 func TestRegisterCompileTypeFn(t *testing.T) {
-	registerCompileTypeFnHelper(t, (*tw.Register[*[]bool]).RegisterCompileBoolFn, true)
-	registerCompileTypeFnHelper(t, (*tw.Register[*[]int]).RegisterCompileIntFn, 123)
-	registerCompileTypeFnHelper(t, (*tw.Register[*[]int8]).RegisterCompileInt8Fn, 123)
-	registerCompileTypeFnHelper(t, (*tw.Register[*[]int16]).RegisterCompileInt16Fn, 123)
-	registerCompileTypeFnHelper(t, (*tw.Register[*[]int32]).RegisterCompileInt32Fn, 123)
-	registerCompileTypeFnHelper(t, (*tw.Register[*[]int64]).RegisterCompileInt64Fn, 123)
-	registerCompileTypeFnHelper(t, (*tw.Register[*[]uint]).RegisterCompileUintFn, 123)
-	registerCompileTypeFnHelper(t, (*tw.Register[*[]uint8]).RegisterCompileUint8Fn, 123)
-	registerCompileTypeFnHelper(t, (*tw.Register[*[]uint16]).RegisterCompileUint16Fn, 123)
-	registerCompileTypeFnHelper(t, (*tw.Register[*[]uint32]).RegisterCompileUint32Fn, 123)
-	registerCompileTypeFnHelper(t, (*tw.Register[*[]uint64]).RegisterCompileUint64Fn, 123)
-	registerCompileTypeFnHelper(t, (*tw.Register[*[]uintptr]).RegisterCompileUintptrFn, 123)
-	registerCompileTypeFnHelper(t, (*tw.Register[*[]float32]).RegisterCompileFloat32Fn, 123.456)
-	registerCompileTypeFnHelper(t, (*tw.Register[*[]float64]).RegisterCompileFloat64Fn, 123.456)
-	registerCompileTypeFnHelper(t, (*tw.Register[*[]complex64]).RegisterCompileComplex64Fn, 123.45+678.9i)
-	registerCompileTypeFnHelper(t, (*tw.Register[*[]complex128]).RegisterCompileComplex128Fn, 123.45+678.9i)
-	registerCompileTypeFnHelper(t, (*tw.Register[*[]string]).RegisterCompileStringFn, "abc")
-	registerCompileTypeFnHelper(t, (*tw.Register[*[]unsafe.Pointer]).RegisterCompileUnsafePointerFn, unsafe.Pointer(ptr(123)))
+	registerCompileTypeFnHelper(t, tw.RegisterCompileBoolFn[*[]bool], true)
+	registerCompileTypeFnHelper(t, tw.RegisterCompileIntFn[*[]int], 123)
+	registerCompileTypeFnHelper(t, tw.RegisterCompileInt8Fn[*[]int8], 123)
+	registerCompileTypeFnHelper(t, tw.RegisterCompileInt16Fn[*[]int16], 123)
+	registerCompileTypeFnHelper(t, tw.RegisterCompileInt32Fn[*[]int32], 123)
+	registerCompileTypeFnHelper(t, tw.RegisterCompileInt64Fn[*[]int64], 123)
+	registerCompileTypeFnHelper(t, tw.RegisterCompileUintFn[*[]uint], 123)
+	registerCompileTypeFnHelper(t, tw.RegisterCompileUint8Fn[*[]uint8], 123)
+	registerCompileTypeFnHelper(t, tw.RegisterCompileUint16Fn[*[]uint16], 123)
+	registerCompileTypeFnHelper(t, tw.RegisterCompileUint32Fn[*[]uint32], 123)
+	registerCompileTypeFnHelper(t, tw.RegisterCompileUint64Fn[*[]uint64], 123)
+	registerCompileTypeFnHelper(t, tw.RegisterCompileUintptrFn[*[]uintptr], 123)
+	registerCompileTypeFnHelper(t, tw.RegisterCompileFloat32Fn[*[]float32], 123.456)
+	registerCompileTypeFnHelper(t, tw.RegisterCompileFloat64Fn[*[]float64], 123.456)
+	registerCompileTypeFnHelper(t, tw.RegisterCompileComplex64Fn[*[]complex64], 123.45+678.9i)
+	registerCompileTypeFnHelper(t, tw.RegisterCompileComplex128Fn[*[]complex128], 123.45+678.9i)
+	registerCompileTypeFnHelper(t, tw.RegisterCompileStringFn[*[]string], "abc")
+	registerCompileTypeFnHelper(t, tw.RegisterCompileUnsafePointerFn[*[]unsafe.Pointer], unsafe.Pointer(ptr(123)))
 }
 
 type registerCompileTypeFn[T any] func(*tw.Register[*[]T], tw.CompileFn[*[]T, T])
@@ -158,7 +158,7 @@ func TestRegisterCompileStructFn(t *testing.T) {
 		return err
 	})
 
-	register.RegisterCompileStructFn(func(typ reflect.Type, sfw tw.StructFieldRegister) tw.WalkStructFn[*strings.Builder] {
+	tw.RegisterCompileStructFn(register, func(typ reflect.Type, sfw tw.StructFieldRegister) tw.WalkStructFn[*strings.Builder] {
 		fields := make([]reflect.StructField, typ.NumField())
 		for i := range fields {
 			fields[i] = typ.Field(i)
@@ -227,7 +227,7 @@ func TestRegisterCompileStructFnIndex(t *testing.T) {
 		return err
 	})
 
-	register.RegisterCompileStructFn(func(typ reflect.Type, sfw tw.StructFieldRegister) tw.WalkStructFn[*strings.Builder] {
+	tw.RegisterCompileStructFn(register, func(typ reflect.Type, sfw tw.StructFieldRegister) tw.WalkStructFn[*strings.Builder] {
 		fields := make([]reflect.StructField, 0, typ.NumField())
 		for _, f := range reflect.VisibleFields(typ) {
 			if f.Anonymous {
@@ -273,7 +273,7 @@ func TestRegisterCompileArrayFn(t *testing.T) {
 		return err
 	})
 
-	register.RegisterCompileArrayFn(func(typ reflect.Type) tw.WalkArrayFn[*strings.Builder] {
+	tw.RegisterCompileArrayFn(register, func(typ reflect.Type) tw.WalkArrayFn[*strings.Builder] {
 		return func(ctx *strings.Builder, aw tw.Array[*strings.Builder]) error {
 			ctx.WriteRune('[')
 			for i := 0; i < aw.Len(); i++ {
@@ -316,7 +316,7 @@ func TestRegisterCompileSliceFn(t *testing.T) {
 		return err
 	})
 
-	register.RegisterCompileSliceFn(func(typ reflect.Type) tw.WalkSliceFn[*strings.Builder] {
+	tw.RegisterCompileSliceFn(register, func(typ reflect.Type) tw.WalkSliceFn[*strings.Builder] {
 		return func(ctx *strings.Builder, sw tw.Slice[*strings.Builder]) error {
 			if sw.IsNil() {
 				ctx.WriteString("null")
@@ -374,7 +374,7 @@ func TestRegisterCompilePtrFn(t *testing.T) {
 		return err
 	})
 
-	register.RegisterCompilePtrFn(func(typ reflect.Type) tw.WalkPtrFn[*strings.Builder] {
+	tw.RegisterCompilePtrFn(register, func(typ reflect.Type) tw.WalkPtrFn[*strings.Builder] {
 		return func(ctx *strings.Builder, pw tw.Ptr[*strings.Builder]) error {
 			if pw.IsNil() {
 				ctx.WriteString("null")
@@ -476,7 +476,7 @@ func TestRegisterCompileMapFn(t *testing.T) {
 		return err
 	})
 
-	register.RegisterCompileMapFn(func(typ reflect.Type) tw.WalkMapFn[*strings.Builder] {
+	tw.RegisterCompileMapFn(register, func(typ reflect.Type) tw.WalkMapFn[*strings.Builder] {
 		return func(ctx *strings.Builder, m tw.Map[*strings.Builder]) error {
 			if m.IsNil() {
 				ctx.WriteString("null")
@@ -562,21 +562,21 @@ func TestRegisterCompileInterfaceFn(t *testing.T) {
 
 	register := tw.NewRegister[*strings.Builder]()
 
-	register.RegisterCompileIntFn(func(r reflect.Type) tw.WalkFn[*strings.Builder, int] {
+	tw.RegisterCompileIntFn(register, func(r reflect.Type) tw.WalkFn[*strings.Builder, int] {
 		return func(ctx *strings.Builder, i tw.Int) error {
 			_, err := fmt.Fprintf(ctx, `%s(%d)`, r.String(), i.Get())
 			return err
 		}
 	})
 
-	register.RegisterCompileStringFn(func(r reflect.Type) tw.WalkFn[*strings.Builder, string] {
+	tw.RegisterCompileStringFn(register, func(r reflect.Type) tw.WalkFn[*strings.Builder, string] {
 		return func(ctx *strings.Builder, s tw.String) error {
 			_, err := fmt.Fprintf(ctx, `%s("%s")`, r.String(), s.Get())
 			return err
 		}
 	})
 
-	register.RegisterCompilePtrFn(func(r reflect.Type) tw.WalkPtrFn[*strings.Builder] {
+	tw.RegisterCompilePtrFn(register, func(r reflect.Type) tw.WalkPtrFn[*strings.Builder] {
 		return func(ctx *strings.Builder, p tw.Ptr[*strings.Builder]) error {
 			ctx.WriteString("ptr")
 			ctx.WriteRune('(')
@@ -593,7 +593,7 @@ func TestRegisterCompileInterfaceFn(t *testing.T) {
 		}
 	})
 
-	register.RegisterCompileStructFn(func(typ reflect.Type, sfw tw.StructFieldRegister) tw.WalkStructFn[*strings.Builder] {
+	tw.RegisterCompileStructFn(register, func(typ reflect.Type, sfw tw.StructFieldRegister) tw.WalkStructFn[*strings.Builder] {
 		fields := make([]reflect.StructField, typ.NumField())
 		for i := range fields {
 			fields[i] = typ.Field(i)
@@ -602,7 +602,7 @@ func TestRegisterCompileInterfaceFn(t *testing.T) {
 		return printStruct(fields)
 	})
 
-	register.RegisterCompileInterfaceFn(func(typ reflect.Type) tw.WalkInterfaceFn[*strings.Builder] {
+	tw.RegisterCompileInterfaceFn(register, func(typ reflect.Type) tw.WalkInterfaceFn[*strings.Builder] {
 		return func(ctx *strings.Builder, i tw.Interface[*strings.Builder]) error {
 			ctx.WriteString(typ.String())
 			ctx.WriteRune('(')
@@ -690,7 +690,7 @@ func TestCompileRecursive(t *testing.T) {
 		return err
 	})
 
-	register.RegisterCompileStructFn(func(typ reflect.Type, s tw.StructFieldRegister) tw.WalkStructFn[*strings.Builder] {
+	tw.RegisterCompileStructFn(register, func(typ reflect.Type, s tw.StructFieldRegister) tw.WalkStructFn[*strings.Builder] {
 		fields := make([]reflect.StructField, typ.NumField())
 		for i := range fields {
 			fields[i] = typ.Field(i)
@@ -699,7 +699,7 @@ func TestCompileRecursive(t *testing.T) {
 		return printStruct(fields)
 	})
 
-	register.RegisterCompilePtrFn(func(typ reflect.Type) tw.WalkPtrFn[*strings.Builder] {
+	tw.RegisterCompilePtrFn(register, func(typ reflect.Type) tw.WalkPtrFn[*strings.Builder] {
 		return func(ctx *strings.Builder, p tw.Ptr[*strings.Builder]) error {
 			if p.IsNil() {
 				ctx.WriteString("nil")
@@ -814,7 +814,7 @@ func settableSliceHelper(t *testing.T) {
 			savedChildren = append(savedChildren, val)
 			return nil
 		})
-		register.RegisterCompileSliceFn(func(typ reflect.Type) tw.WalkSliceFn[struct{}] {
+		tw.RegisterCompileSliceFn(register, func(typ reflect.Type) tw.WalkSliceFn[struct{}] {
 			return func(ctx struct{}, s tw.Slice[struct{}]) error {
 				for i := 0; i < s.Len(); i++ {
 					err := s.Elem(i).Walk(ctx)
@@ -866,7 +866,7 @@ func settableArrayHelper(t *testing.T) {
 			savedChildren = append(savedChildren, val)
 			return nil
 		})
-		register.RegisterCompileArrayFn(func(typ reflect.Type) tw.WalkArrayFn[struct{}] {
+		tw.RegisterCompileArrayFn(register, func(typ reflect.Type) tw.WalkArrayFn[struct{}] {
 			return func(ctx struct{}, a tw.Array[struct{}]) error {
 				for i := 0; i < a.Len(); i++ {
 					err := a.Elem(i).Walk(ctx)
@@ -919,7 +919,7 @@ func settableStructHelper(t *testing.T) {
 			savedChildren = append(savedChildren, val)
 			return nil
 		})
-		register.RegisterCompileStructFn(func(typ reflect.Type, register tw.StructFieldRegister) tw.WalkStructFn[struct{}] {
+		tw.RegisterCompileStructFn(register, func(typ reflect.Type, register tw.StructFieldRegister) tw.WalkStructFn[struct{}] {
 			for i := 0; i < typ.NumField(); i++ {
 				register.RegisterField(i)
 			}
@@ -983,7 +983,7 @@ func settablePtrHelper(t *testing.T) {
 			savedChildren = append(savedChildren, val)
 			return nil
 		})
-		register.RegisterCompilePtrFn(func(typ reflect.Type) tw.WalkPtrFn[struct{}] {
+		tw.RegisterCompilePtrFn(register, func(typ reflect.Type) tw.WalkPtrFn[struct{}] {
 			return func(ctx struct{}, p tw.Ptr[struct{}]) error {
 				return p.Walk(ctx)
 			}
@@ -1029,7 +1029,7 @@ func settableMapHelper(t *testing.T) {
 			savedChildren = append(savedChildren, val)
 			return nil
 		})
-		register.RegisterCompileMapFn(func(typ reflect.Type) tw.WalkMapFn[struct{}] {
+		tw.RegisterCompileMapFn(register, func(typ reflect.Type) tw.WalkMapFn[struct{}] {
 			return func(ctx struct{}, m tw.Map[struct{}]) error {
 				iter := m.Iter()
 				for iter.Next() {
@@ -1080,17 +1080,17 @@ func settableInterfaceHelper(t *testing.T) {
 			savedChildren = append(savedChildren, val)
 			return nil
 		})
-		register.RegisterCompileInterfaceFn(func(typ reflect.Type) tw.WalkInterfaceFn[struct{}] {
+		tw.RegisterCompileInterfaceFn(register, func(typ reflect.Type) tw.WalkInterfaceFn[struct{}] {
 			return func(ctx struct{}, i tw.Interface[struct{}]) error {
 				return i.Walk(ctx)
 			}
 		})
-		register.RegisterCompileArrayFn(func(typ reflect.Type) tw.WalkArrayFn[struct{}] {
+		tw.RegisterCompileArrayFn(register, func(typ reflect.Type) tw.WalkArrayFn[struct{}] {
 			return func(ctx struct{}, a tw.Array[struct{}]) error {
 				return a.Elem(0).Walk(ctx)
 			}
 		})
-		register.RegisterCompilePtrFn(func(typ reflect.Type) tw.WalkPtrFn[struct{}] {
+		tw.RegisterCompilePtrFn(register, func(typ reflect.Type) tw.WalkPtrFn[struct{}] {
 			return func(ctx struct{}, a tw.Ptr[struct{}]) error {
 				return a.Walk(ctx)
 			}
@@ -1167,13 +1167,13 @@ func interfaceStructHelper(t *testing.T) {
 	t.Run("struct", func(t *testing.T) {
 		register := tw.NewRegister[*any]()
 		tw.RegisterTypeFn(register, func(*any, tw.Arg[int]) error { return nil })
-		register.RegisterCompileStructFn(func(typ reflect.Type, _ tw.StructFieldRegister) tw.WalkStructFn[*any] {
+		tw.RegisterCompileStructFn(register, func(typ reflect.Type, _ tw.StructFieldRegister) tw.WalkStructFn[*any] {
 			return func(ctx *any, s tw.Struct[*any]) error {
 				*ctx = s.Interface()
 				return nil
 			}
 		})
-		register.RegisterCompilePtrFn(func(typ reflect.Type) tw.WalkPtrFn[*any] {
+		tw.RegisterCompilePtrFn(register, func(typ reflect.Type) tw.WalkPtrFn[*any] {
 			return func(ctx *any, p tw.Ptr[*any]) error {
 				return p.Walk(ctx)
 			}
@@ -1191,14 +1191,14 @@ func interfaceStructFieldHelper(t *testing.T) {
 	t.Run("struct-field", func(t *testing.T) {
 		register := tw.NewRegister[*any]()
 		tw.RegisterTypeFn(register, func(*any, tw.Arg[int]) error { return nil })
-		register.RegisterCompileStructFn(func(typ reflect.Type, r tw.StructFieldRegister) tw.WalkStructFn[*any] {
+		tw.RegisterCompileStructFn(register, func(typ reflect.Type, r tw.StructFieldRegister) tw.WalkStructFn[*any] {
 			r.RegisterField(1)
 			return func(ctx *any, s tw.Struct[*any]) error {
 				*ctx = s.Field(0).Interface()
 				return nil
 			}
 		})
-		register.RegisterCompilePtrFn(func(typ reflect.Type) tw.WalkPtrFn[*any] {
+		tw.RegisterCompilePtrFn(register, func(typ reflect.Type) tw.WalkPtrFn[*any] {
 			return func(ctx *any, p tw.Ptr[*any]) error {
 				return p.Walk(ctx)
 			}
@@ -1211,13 +1211,13 @@ func interfaceArrayHelper(t *testing.T) {
 	t.Run("array", func(t *testing.T) {
 		register := tw.NewRegister[*any]()
 		tw.RegisterTypeFn(register, func(*any, tw.Arg[int]) error { return nil })
-		register.RegisterCompileArrayFn(func(typ reflect.Type) tw.WalkArrayFn[*any] {
+		tw.RegisterCompileArrayFn(register, func(typ reflect.Type) tw.WalkArrayFn[*any] {
 			return func(ctx *any, a tw.Array[*any]) error {
 				*ctx = a.Interface()
 				return nil
 			}
 		})
-		register.RegisterCompilePtrFn(func(typ reflect.Type) tw.WalkPtrFn[*any] {
+		tw.RegisterCompilePtrFn(register, func(typ reflect.Type) tw.WalkPtrFn[*any] {
 			return func(ctx *any, p tw.Ptr[*any]) error {
 				return p.Walk(ctx)
 			}
@@ -1230,13 +1230,13 @@ func interfaceArrayElemHelper(t *testing.T) {
 	t.Run("array-elem", func(t *testing.T) {
 		register := tw.NewRegister[*any]()
 		tw.RegisterTypeFn(register, func(*any, tw.Arg[int]) error { return nil })
-		register.RegisterCompileArrayFn(func(typ reflect.Type) tw.WalkArrayFn[*any] {
+		tw.RegisterCompileArrayFn(register, func(typ reflect.Type) tw.WalkArrayFn[*any] {
 			return func(ctx *any, a tw.Array[*any]) error {
 				*ctx = a.Elem(0).Interface()
 				return nil
 			}
 		})
-		register.RegisterCompilePtrFn(func(typ reflect.Type) tw.WalkPtrFn[*any] {
+		tw.RegisterCompilePtrFn(register, func(typ reflect.Type) tw.WalkPtrFn[*any] {
 			return func(ctx *any, p tw.Ptr[*any]) error {
 				return p.Walk(ctx)
 			}
@@ -1249,13 +1249,13 @@ func interfaceSliceHelper(t *testing.T) {
 	t.Run("slice", func(t *testing.T) {
 		register := tw.NewRegister[*any]()
 		tw.RegisterTypeFn(register, func(*any, tw.Arg[int]) error { return nil })
-		register.RegisterCompileSliceFn(func(typ reflect.Type) tw.WalkSliceFn[*any] {
+		tw.RegisterCompileSliceFn(register, func(typ reflect.Type) tw.WalkSliceFn[*any] {
 			return func(ctx *any, s tw.Slice[*any]) error {
 				*ctx = s.Interface()
 				return nil
 			}
 		})
-		register.RegisterCompilePtrFn(func(typ reflect.Type) tw.WalkPtrFn[*any] {
+		tw.RegisterCompilePtrFn(register, func(typ reflect.Type) tw.WalkPtrFn[*any] {
 			return func(ctx *any, p tw.Ptr[*any]) error {
 				return p.Walk(ctx)
 			}
@@ -1268,13 +1268,13 @@ func interfaceSliceElemHelper(t *testing.T) {
 	t.Run("slice-elem", func(t *testing.T) {
 		register := tw.NewRegister[*any]()
 		tw.RegisterTypeFn(register, func(*any, tw.Arg[int]) error { return nil })
-		register.RegisterCompileSliceFn(func(typ reflect.Type) tw.WalkSliceFn[*any] {
+		tw.RegisterCompileSliceFn(register, func(typ reflect.Type) tw.WalkSliceFn[*any] {
 			return func(ctx *any, s tw.Slice[*any]) error {
 				*ctx = s.Elem(0).Interface()
 				return nil
 			}
 		})
-		register.RegisterCompilePtrFn(func(typ reflect.Type) tw.WalkPtrFn[*any] {
+		tw.RegisterCompilePtrFn(register, func(typ reflect.Type) tw.WalkPtrFn[*any] {
 			return func(ctx *any, p tw.Ptr[*any]) error {
 				return p.Walk(ctx)
 			}
@@ -1287,7 +1287,7 @@ func interfacePtrHelper(t *testing.T) {
 	t.Run("ptr", func(t *testing.T) {
 		register := tw.NewRegister[*any]()
 		tw.RegisterTypeFn(register, func(*any, tw.Arg[int]) error { return nil })
-		register.RegisterCompilePtrFn(func(typ reflect.Type) tw.WalkPtrFn[*any] {
+		tw.RegisterCompilePtrFn(register, func(typ reflect.Type) tw.WalkPtrFn[*any] {
 			return func(ctx *any, p tw.Ptr[*any]) error {
 				*ctx = p.Interface()
 				return nil
@@ -1302,18 +1302,18 @@ func interfaceInterfaceHelper(t *testing.T) {
 	t.Run("interface", func(t *testing.T) {
 		register := tw.NewRegister[*any]()
 		tw.RegisterTypeFn(register, func(*any, tw.Arg[int]) error { return nil })
-		register.RegisterCompileInterfaceFn(func(typ reflect.Type) tw.WalkInterfaceFn[*any] {
+		tw.RegisterCompileInterfaceFn(register, func(typ reflect.Type) tw.WalkInterfaceFn[*any] {
 			return func(ctx *any, p tw.Interface[*any]) error {
 				*ctx = p.Interface()
 				return nil
 			}
 		})
-		register.RegisterCompileArrayFn(func(typ reflect.Type) tw.WalkArrayFn[*any] {
+		tw.RegisterCompileArrayFn(register, func(typ reflect.Type) tw.WalkArrayFn[*any] {
 			return func(ctx *any, a tw.Array[*any]) error {
 				return a.Elem(0).Walk(ctx)
 			}
 		})
-		register.RegisterCompilePtrFn(func(typ reflect.Type) tw.WalkPtrFn[*any] {
+		tw.RegisterCompilePtrFn(register, func(typ reflect.Type) tw.WalkPtrFn[*any] {
 			return func(ctx *any, p tw.Ptr[*any]) error {
 				return p.Walk(ctx)
 			}
@@ -1377,25 +1377,25 @@ func interfacePtrHelperH[In, V any](t *testing.T, register *tw.Register[*any], v
 
 func TestReturnErrFn(t *testing.T) {
 	register := tw.NewRegister[struct{}]()
-	register.RegisterCompileIntFn(func(typ reflect.Type) tw.WalkFn[struct{}, int] {
+	tw.RegisterCompileIntFn(register, func(typ reflect.Type) tw.WalkFn[struct{}, int] {
 		return tw.ReturnErrFn[struct{}, int](errors.New("int error"))
 	})
-	register.RegisterCompileArrayFn(func(typ reflect.Type) tw.WalkArrayFn[struct{}] {
+	tw.RegisterCompileArrayFn(register, func(typ reflect.Type) tw.WalkArrayFn[struct{}] {
 		return tw.ReturnErrArrayFn[struct{}](errors.New("array error"))
 	})
-	register.RegisterCompileSliceFn(func(typ reflect.Type) tw.WalkSliceFn[struct{}] {
+	tw.RegisterCompileSliceFn(register, func(typ reflect.Type) tw.WalkSliceFn[struct{}] {
 		return tw.ReturnErrSliceFn[struct{}](errors.New("slice error"))
 	})
-	register.RegisterCompilePtrFn(func(typ reflect.Type) tw.WalkPtrFn[struct{}] {
+	tw.RegisterCompilePtrFn(register, func(typ reflect.Type) tw.WalkPtrFn[struct{}] {
 		return tw.ReturnErrPtrFn[struct{}](errors.New("pointer error"))
 	})
-	register.RegisterCompileStructFn(func(typ reflect.Type, r tw.StructFieldRegister) tw.WalkStructFn[struct{}] {
+	tw.RegisterCompileStructFn(register, func(typ reflect.Type, r tw.StructFieldRegister) tw.WalkStructFn[struct{}] {
 		return tw.ReturnErrStructFn[struct{}](errors.New("struct error"))
 	})
-	register.RegisterCompileMapFn(func(typ reflect.Type) tw.WalkMapFn[struct{}] {
+	tw.RegisterCompileMapFn(register, func(typ reflect.Type) tw.WalkMapFn[struct{}] {
 		return tw.ReturnErrMapFn[struct{}](errors.New("map error"))
 	})
-	register.RegisterCompileInterfaceFn(func(typ reflect.Type) tw.WalkInterfaceFn[struct{}] {
+	tw.RegisterCompileInterfaceFn(register, func(typ reflect.Type) tw.WalkInterfaceFn[struct{}] {
 		return tw.ReturnErrInterfaceFn[struct{}](errors.New("interface error"))
 	})
 	walker := tw.NewWalker(register)
