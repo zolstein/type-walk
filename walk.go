@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	NUM_KIND = 27
+	numKind = 27
 )
 
 type walkFn[Ctx any] func(Ctx, arg) error
@@ -112,7 +112,7 @@ func walk[Ctx any](fnSrc fnSrc[Ctx], ctx Ctx, in any) error {
 
 type fnSrc[Ctx any] func(t g_reflect.Type) (*walkFn[Ctx], error)
 
-var ptrTypes = [NUM_KIND]bool{
+var ptrTypes = [numKind]bool{
 	g_reflect.Ptr:           true,
 	g_reflect.UnsafePointer: true,
 	g_reflect.Map:           true,

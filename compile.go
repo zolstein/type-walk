@@ -3,7 +3,7 @@ package type_walk
 import (
 	"fmt"
 	g_reflect "github.com/goccy/go-reflect"
-	sync_map "github.com/zolstein/sync-map"
+	"github.com/zolstein/sync-map"
 	"reflect"
 	"sync"
 	"unsafe"
@@ -11,7 +11,7 @@ import (
 
 type simpleCompiler[Ctx any] struct {
 	typeFns    map[g_reflect.Type]*walkFn[Ctx]
-	compileFns [NUM_KIND]unsafe.Pointer
+	compileFns [numKind]unsafe.Pointer
 }
 
 func newSimpleCompiler[Ctx any](register *Register[Ctx]) *simpleCompiler[Ctx] {

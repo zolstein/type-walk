@@ -69,7 +69,7 @@ type typeFnEntry[Ctx any] struct {
 // Register stores a set of WalkFns used to walk specific types, and functions to compile WalkFns for kinds of types.
 type Register[Ctx any] struct {
 	typeFns    []typeFnEntry[Ctx]
-	compileFns [NUM_KIND]unsafe.Pointer
+	compileFns [numKind]unsafe.Pointer
 }
 
 // NewRegister creates a new register.
