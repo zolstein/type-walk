@@ -17,6 +17,10 @@ type walkFn[Ctx any] func(Ctx, arg) error
 // Must return walkFn[Ctx] for provided type.
 type compileFn[Ctx any] func(reflect.Type) walkFn[Ctx]
 
+// Converts an any into an unsafe pointer to a specific interface type.
+// The passed in value must be convertible to that type.
+type ifaceConvertFn func(any) unsafe.Pointer
+
 // TypeFn is a function to walk a value of a particular type.
 //
 // Despite taking an argument of type (*In) it is walked as a value of type In.
@@ -96,16 +100,10 @@ func walk[Ctx any](fnSrc fnSrc[Ctx], ctx Ctx, in any) error {
 	if err != nil {
 		return err
 	}
-	// XXX: This almost definitely induces an allocation.
-	if ptrTypes[t.Kind()] {
-		// It's not clear why this needs to copy p to in new variable before taking the reference, but it doesn't work
-		// without this.
-		var copyP = p
-		p = unsafe.Pointer(&copyP)
-	}
 	arg := arg{
-		p:       p,
-		canAddr: reflect.ValueOf(in).CanAddr(),
+		p:         p,
+		canAddr:   reflect.ValueOf(in).CanAddr(),
+		directPtr: ptrTypes[t.Kind()],
 	}
 	return (*fn)(ctx, arg)
 }
@@ -372,14 +370,24 @@ type Ptr[Ctx any] struct {
 
 // IsNil returns if the pointer value is nil.
 func (p Ptr[Ctx]) IsNil() bool {
-	return *castTo[*unsafe.Pointer](p.arg.p) == nil
+	if p.arg.directPtr {
+		return p.arg.p == nil
+	} else {
+		return *castTo[*unsafe.Pointer](p.arg.p) == nil
+	}
 }
 
 // Walk walks the value pointed at by the pointer value.
 // The pointer value must not be nil.
 func (p Ptr[Ctx]) Walk(ctx Ctx) error {
+	var elemPtr unsafe.Pointer
+	if p.arg.directPtr {
+		elemPtr = p.arg.p
+	} else {
+		elemPtr = *castTo[*unsafe.Pointer](p.arg.p)
+	}
 	elemArg := arg{
-		p: *castTo[*unsafe.Pointer](p.arg.p),
+		p: elemPtr,
 		// The value behind a pointer is always addressable - we have the pointer!
 		canAddr: true,
 	}
@@ -388,13 +396,21 @@ func (p Ptr[Ctx]) Walk(ctx Ctx) error {
 
 // Interface returns the underlying value as an interface.
 func (p Ptr[Ctx]) Interface() any {
-	return g_reflect.NewAt(p.meta.typ, p.arg.p).Elem().Interface()
+	var ptr unsafe.Pointer
+	if p.arg.directPtr {
+		ptr = unsafe.Pointer(&p.arg.p)
+	} else {
+		ptr = p.arg.p
+	}
+	return g_reflect.NewAt(p.meta.typ, ptr).Elem().Interface()
 }
 
 type mapMetadata[Ctx any] struct {
-	typ   g_reflect.Type
-	keyFn *walkFn[Ctx]
-	valFn *walkFn[Ctx]
+	typ       g_reflect.Type
+	keyFn     *walkFn[Ctx]
+	valFn     *walkFn[Ctx]
+	keyConvFn ifaceConvertFn
+	valConvFn ifaceConvertFn
 }
 
 // Map represents a Map value.
@@ -405,12 +421,25 @@ type Map[Ctx any] struct {
 
 // IsNil returns whether the map value is nil.
 func (m Map[Ctx]) IsNil() bool {
-	return *castTo[*unsafe.Pointer](m.arg.p) == nil
+	if m.arg.directPtr {
+		// We have the map pointer directly
+		return m.arg.p == nil
+	} else {
+		// Normal case: we have a pointer to the map pointer
+		return *castTo[*unsafe.Pointer](m.arg.p) == nil
+	}
 }
 
 // Iter returns an iterator over the elements of the map.
 func (m Map[Ctx]) Iter() MapIter[Ctx] {
-	ptr := m.arg.p
+	var ptr unsafe.Pointer
+	if m.arg.directPtr {
+		// We have the map pointer directly
+		ptr = unsafe.Pointer(&m.arg.p)
+	} else {
+		// Normal case: we have a pointer to the map pointer
+		ptr = m.arg.p
+	}
 	rMap := g_reflect.NewAt(m.meta.typ, ptr).Elem()
 	return MapIter[Ctx]{
 		meta: m.meta,
@@ -420,7 +449,15 @@ func (m Map[Ctx]) Iter() MapIter[Ctx] {
 
 // Interface returns the underlying value as an interface.
 func (m Map[Ctx]) Interface() any {
-	return g_reflect.NewAt(m.meta.typ, m.arg.p).Elem().Interface()
+	var ptr unsafe.Pointer
+	if m.arg.directPtr {
+		// We have the map pointer directly
+		ptr = unsafe.Pointer(&m.arg.p)
+	} else {
+		// Normal case: we have a pointer to the map pointer
+		ptr = m.arg.p
+	}
+	return g_reflect.NewAt(m.meta.typ, ptr).Elem().Interface()
 }
 
 // MapIter represents an iterator over the entries of the map.
@@ -436,33 +473,25 @@ func (m MapIter[Ctx]) Next() bool {
 
 // Entry returns a MapEntry representing a key and value in the map.
 func (m MapIter[Ctx]) Entry() MapEntry[Ctx] {
-	key := m.iter.Key().Interface()
-	val := m.iter.Value().Interface()
-	_, keyPtr := g_reflect.TypeAndPtrOf(key)
-	_, valPtr := g_reflect.TypeAndPtrOf(val)
 	return MapEntry[Ctx]{
-		meta:   m.meta,
-		keyPtr: keyPtr,
-		valPtr: valPtr,
+		meta: m.meta,
+		key:  m.iter.Key().Interface(),
+		val:  m.iter.Value().Interface(),
 	}
 }
 
 // MapEntry represents a key and value in the map.
 type MapEntry[Ctx any] struct {
-	meta   *mapMetadata[Ctx]
-	keyPtr unsafe.Pointer
-	valPtr unsafe.Pointer
+	meta *mapMetadata[Ctx]
+	key  any
+	val  any
 }
 
 // Key returns a MapKey representing a key in the map.
 func (m MapEntry[Ctx]) Key() MapKey[Ctx] {
 	return MapKey[Ctx]{
 		meta: m.meta,
-		arg: arg{
-			p: m.keyPtr,
-			// Map element isn't indexable.
-			canAddr: false,
-		},
+		key:  m.key,
 	}
 }
 
@@ -470,44 +499,89 @@ func (m MapEntry[Ctx]) Key() MapKey[Ctx] {
 func (m MapEntry[Ctx]) Value() MapValue[Ctx] {
 	return MapValue[Ctx]{
 		meta: m.meta,
-		arg: arg{
-			p: m.valPtr,
-			// Map element isn't indexable.
-			canAddr: false,
-		},
+		val:  m.val,
 	}
 }
 
 // MapKey represents a key in the map.
 type MapKey[Ctx any] struct {
 	meta *mapMetadata[Ctx]
-	arg  arg
+	key  any
 }
 
 // Walk walks the MapKey.
 func (m MapKey[Ctx]) Walk(ctx Ctx) error {
-	return (*m.meta.keyFn)(ctx, m.arg)
+	kind := m.meta.typ.Key().Kind()
+	var a arg
+	if kind == reflect.Interface {
+		if m.meta.keyConvFn != nil {
+			a = arg{
+				p:       m.meta.keyConvFn(m.key),
+				canAddr: false,
+			}
+		} else {
+			a = arg{
+				p:        unsafe.Pointer(&m.key),
+				canAddr:  false,
+				wrongAny: true,
+			}
+		}
+	} else {
+		_, ptr := g_reflect.TypeAndPtrOf(m.key)
+		a = arg{
+			p:         ptr,
+			canAddr:   false,
+			directPtr: ptrTypes[kind],
+		}
+	}
+
+	return (*m.meta.keyFn)(ctx, a)
 }
 
 // Interface returns the underlying value as an interface.
 func (m MapKey[Ctx]) Interface() any {
-	return g_reflect.NewAt(m.meta.typ.Key(), m.arg.p).Elem().Interface()
+	return m.key
 }
 
 // MapValue represents a value in the map.
 type MapValue[Ctx any] struct {
 	meta *mapMetadata[Ctx]
-	arg  arg
+	val  any
 }
 
 // Walk walks the MapValue.
 func (m MapValue[Ctx]) Walk(ctx Ctx) error {
-	return (*m.meta.valFn)(ctx, m.arg)
+	kind := m.meta.typ.Elem().Kind()
+	var a arg
+	if kind == reflect.Interface {
+		if m.meta.valConvFn != nil {
+			a = arg{
+				p:       m.meta.valConvFn(m.val),
+				canAddr: false,
+			}
+		} else {
+			a = arg{
+				p:        unsafe.Pointer(&m.val),
+				canAddr:  false,
+				wrongAny: true,
+			}
+		}
+	} else {
+		_, ptr := g_reflect.TypeAndPtrOf(m.val)
+		a = arg{
+			p:         ptr,
+			canAddr:   false,
+			directPtr: ptrTypes[kind],
+		}
+	}
+
+	return (*m.meta.valFn)(ctx, a)
 }
 
 // Interface returns the underlying value as an interface.
 func (m MapValue[Ctx]) Interface() any {
-	return g_reflect.NewAt(m.meta.typ.Elem(), m.arg.p).Elem().Interface()
+	// return g_reflect.NewAt(m.meta.typ.Elem(), m.arg.p).Elem().Interface()
+	return m.val
 }
 
 type ifaceMetadata[Ctx any] struct {
@@ -535,5 +609,9 @@ func (i Interface[Ctx]) Walk(ctx Ctx) error {
 
 // Interface returns the underlying value as an interface.
 func (i Interface[Ctx]) Interface() any {
-	return g_reflect.NewAt(i.meta.typ, i.arg.p).Elem().Interface()
+	if i.arg.wrongAny {
+		return g_reflect.NewAt(reflectType[any](), i.arg.p).Elem().Interface()
+	} else {
+		return g_reflect.NewAt(i.meta.typ, i.arg.p).Elem().Interface()
+	}
 }

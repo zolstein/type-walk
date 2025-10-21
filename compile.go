@@ -10,8 +10,9 @@ import (
 )
 
 type simpleCompiler[Ctx any] struct {
-	typeFns    map[g_reflect.Type]*walkFn[Ctx]
-	compileFns [numKind]unsafe.Pointer
+	typeFns         map[g_reflect.Type]*walkFn[Ctx]
+	compileFns      [numKind]unsafe.Pointer
+	ifaceConvertFns map[g_reflect.Type]ifaceConvertFn
 }
 
 func newSimpleCompiler[Ctx any](register *Register[Ctx]) *simpleCompiler[Ctx] {
@@ -20,9 +21,15 @@ func newSimpleCompiler[Ctx any](register *Register[Ctx]) *simpleCompiler[Ctx] {
 		e := register.typeFns[i]
 		typeFns[e.t] = &e.fn
 	}
+	ifaceConvertFns := make(map[g_reflect.Type]ifaceConvertFn, len(register.ifaceConvertFns)+1)
+	for _, e := range register.ifaceConvertFns {
+		ifaceConvertFns[e.t] = e.fn
+	}
+	ifaceConvertFns[reflectType[any]()] = func(a any) unsafe.Pointer { return unsafe.Pointer(&a) }
 	return &simpleCompiler[Ctx]{
-		typeFns:    typeFns,
-		compileFns: register.compileFns,
+		typeFns:         typeFns,
+		compileFns:      register.compileFns,
+		ifaceConvertFns: ifaceConvertFns,
 	}
 }
 
@@ -178,11 +185,13 @@ func lookupFieldFn(offsets []uintptr) lookupFn {
 
 func (c *simpleCompiler[Ctx]) compileMap(t g_reflect.Type, fn CompileMapFn[Ctx]) (walkFn[Ctx], error) {
 	mapWalkFn := fn(g_reflect.ToReflectType(t))
-	keyFn, err := c.getFn(t.Key())
+	keyType := t.Key()
+	keyFn, err := c.getFn(keyType)
 	if err != nil {
 		return nil, err
 	}
-	valFn, err := c.getFn(t.Elem())
+	valType := t.Elem()
+	valFn, err := c.getFn(valType)
 	if err != nil {
 		return nil, err
 	}
@@ -190,6 +199,12 @@ func (c *simpleCompiler[Ctx]) compileMap(t g_reflect.Type, fn CompileMapFn[Ctx])
 		typ:   t,
 		keyFn: keyFn,
 		valFn: valFn,
+	}
+	if keyType.Kind() == reflect.Interface {
+		mapMeta.keyConvFn = c.ifaceConvertFns[keyType]
+	}
+	if valType.Kind() == reflect.Interface {
+		mapMeta.valConvFn = c.ifaceConvertFns[valType]
 	}
 	return func(ctx Ctx, arg arg) error {
 		mapWalker := Map[Ctx]{meta: &mapMeta, arg: arg}
