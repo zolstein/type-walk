@@ -550,6 +550,428 @@ func TestRegisterCompileMapFn(t *testing.T) {
 	}
 }
 
+func TestRegisterCompileMapFnComplex(t *testing.T) {
+	type Person struct {
+		Name string
+		Age  int
+	}
+
+	type Key struct {
+		ID   int
+		Code string
+	}
+
+	register := tw.NewRegister[*strings.Builder]()
+
+	tw.RegisterCompileStringFn(register, func(typ reflect.Type) tw.WalkFn[*strings.Builder, string] {
+		return func(ctx *strings.Builder, s tw.String) error {
+			_, err := fmt.Fprintf(ctx, `"%s"`, s.Get())
+			return err
+		}
+	})
+
+	tw.RegisterTypeFn(register, func(ctx *strings.Builder, i tw.Int) error {
+		_, err := fmt.Fprintf(ctx, `%d`, i.Get())
+		return err
+	})
+
+	tw.RegisterCompileStructFn(register, func(typ reflect.Type, sfw tw.StructFieldRegister) tw.WalkStructFn[*strings.Builder] {
+		fields := make([]reflect.StructField, typ.NumField())
+		for i := range fields {
+			fields[i] = typ.Field(i)
+			sfw.RegisterField(i)
+		}
+		return printStruct(fields)
+	})
+
+	tw.RegisterCompilePtrFn(register, func(typ reflect.Type) tw.WalkPtrFn[*strings.Builder] {
+		return func(ctx *strings.Builder, pw tw.Ptr[*strings.Builder]) error {
+			if pw.IsNil() {
+				ctx.WriteString("null")
+				return nil
+			}
+			ctx.WriteString("ptr(")
+			err := pw.Walk(ctx)
+			if err != nil {
+				return err
+			}
+			ctx.WriteRune(')')
+			return nil
+		}
+	})
+
+	tw.RegisterCompileMapFn(register, func(typ reflect.Type) tw.WalkMapFn[*strings.Builder] {
+		return func(ctx *strings.Builder, m tw.Map[*strings.Builder]) error {
+			if m.IsNil() {
+				ctx.WriteString("null")
+				return nil
+			}
+			ctx.WriteRune('{')
+			iter := m.Iter()
+			i := 0
+			for iter.Next() {
+				if i > 0 {
+					ctx.WriteRune(',')
+				}
+				e := iter.Entry()
+				err := e.Key().Walk(ctx)
+				if err != nil {
+					return err
+				}
+				ctx.WriteRune(':')
+				err = e.Value().Walk(ctx)
+				if err != nil {
+					return err
+				}
+				i++
+			}
+			ctx.WriteRune('}')
+			return nil
+		}
+	})
+
+	walker := tw.NewWalker[*strings.Builder](register)
+
+	t.Run("map[struct]struct", func(t *testing.T) {
+		typeFn, err := tw.TypeFnFor[map[Key]Person](walker)
+		require.NoError(t, err)
+
+		testMap := map[Key]Person{
+			{ID: 1, Code: "A"}: {Name: "Alice", Age: 30},
+			{ID: 2, Code: "B"}: {Name: "Bob", Age: 25},
+		}
+
+		var sb strings.Builder
+		err = walker.Walk(&sb, testMap)
+		require.NoError(t, err)
+		result := sb.String()
+		assert.Contains(t, result, `{ID:1,Code:"A"}:{Name:"Alice",Age:30}`)
+		assert.Contains(t, result, `{ID:2,Code:"B"}:{Name:"Bob",Age:25}`)
+
+		sb.Reset()
+		err = typeFn(&sb, &testMap)
+		require.NoError(t, err)
+		result2 := sb.String()
+		assert.Contains(t, result2, `{ID:1,Code:"A"}:{Name:"Alice",Age:30}`)
+		assert.Contains(t, result2, `{ID:2,Code:"B"}:{Name:"Bob",Age:25}`)
+	})
+
+	t.Run("map[*struct]*struct", func(t *testing.T) {
+		typeFn, err := tw.TypeFnFor[map[*Key]*Person](walker)
+		require.NoError(t, err)
+
+		key1 := &Key{ID: 1, Code: "A"}
+		key2 := &Key{ID: 2, Code: "B"}
+		person1 := &Person{Name: "Alice", Age: 30}
+		person2 := &Person{Name: "Bob", Age: 25}
+
+		testMap := map[*Key]*Person{
+			key1: person1,
+			key2: person2,
+		}
+
+		var sb strings.Builder
+		err = walker.Walk(&sb, testMap)
+		require.NoError(t, err)
+		result := sb.String()
+		assert.Contains(t, result, `ptr({ID:1,Code:"A"}):ptr({Name:"Alice",Age:30})`)
+		assert.Contains(t, result, `ptr({ID:2,Code:"B"}):ptr({Name:"Bob",Age:25})`)
+
+		sb.Reset()
+		err = typeFn(&sb, &testMap)
+		require.NoError(t, err)
+		result2 := sb.String()
+		assert.Contains(t, result2, `ptr({ID:1,Code:"A"}):ptr({Name:"Alice",Age:30})`)
+		assert.Contains(t, result2, `ptr({ID:2,Code:"B"}):ptr({Name:"Bob",Age:25})`)
+	})
+
+	t.Run("map[string]*struct", func(t *testing.T) {
+		typeFn, err := tw.TypeFnFor[map[string]*Person](walker)
+		require.NoError(t, err)
+
+		person1 := &Person{Name: "Alice", Age: 30}
+		person2 := &Person{Name: "Bob", Age: 25}
+
+		testMap := map[string]*Person{
+			"alice": person1,
+			"bob":   person2,
+		}
+
+		var sb strings.Builder
+		err = walker.Walk(&sb, testMap)
+		require.NoError(t, err)
+		result := sb.String()
+		assert.Contains(t, result, `"alice":ptr({Name:"Alice",Age:30})`)
+		assert.Contains(t, result, `"bob":ptr({Name:"Bob",Age:25})`)
+
+		sb.Reset()
+		err = typeFn(&sb, &testMap)
+		require.NoError(t, err)
+		result2 := sb.String()
+		assert.Contains(t, result2, `"alice":ptr({Name:"Alice",Age:30})`)
+		assert.Contains(t, result2, `"bob":ptr({Name:"Bob",Age:25})`)
+	})
+
+	t.Run("map[int]map[string]int", func(t *testing.T) {
+		typeFn, err := tw.TypeFnFor[map[int]map[string]int](walker)
+		require.NoError(t, err)
+
+		testMap := map[int]map[string]int{
+			1: {"a": 10, "b": 20},
+			2: {"c": 30, "d": 40},
+		}
+
+		var sb strings.Builder
+		err = walker.Walk(&sb, testMap)
+		require.NoError(t, err)
+		result := sb.String()
+		assert.Contains(t, result, "1:")
+		assert.Contains(t, result, "2:")
+
+		sb.Reset()
+		err = typeFn(&sb, &testMap)
+		require.NoError(t, err)
+		result2 := sb.String()
+		assert.Contains(t, result2, "1:")
+		assert.Contains(t, result2, "2:")
+	})
+
+	t.Run("empty_and_nil_maps", func(t *testing.T) {
+		typeFn, err := tw.TypeFnFor[map[Key]Person](walker)
+		require.NoError(t, err)
+
+		var sb strings.Builder
+		err = walker.Walk(&sb, (map[Key]Person)(nil))
+		require.NoError(t, err)
+		assert.Equal(t, "null", sb.String())
+
+		sb.Reset()
+		err = walker.Walk(&sb, map[Key]Person{})
+		require.NoError(t, err)
+		assert.Equal(t, "{}", sb.String())
+
+		sb.Reset()
+		err = typeFn(&sb, ptr[map[Key]Person](nil))
+		require.NoError(t, err)
+		assert.Equal(t, "null", sb.String())
+
+		sb.Reset()
+		emptyMap := make(map[Key]Person)
+		err = typeFn(&sb, &emptyMap)
+		require.NoError(t, err)
+		assert.Equal(t, "{}", sb.String())
+	})
+}
+
+func TestRegisterCompileMapFnInterface(t *testing.T) {
+	register := tw.NewRegister[*strings.Builder]()
+	tw.RegisterCompileStringFn(register, func(typ reflect.Type) tw.WalkFn[*strings.Builder, string] {
+		return func(ctx *strings.Builder, s tw.String) error {
+			_, err := fmt.Fprintf(ctx, `"%s"`, s.Get())
+			return err
+		}
+	})
+
+	tw.RegisterCompileIntFn(register, func(typ reflect.Type) tw.WalkFn[*strings.Builder, int] {
+		return func(ctx *strings.Builder, i tw.Int) error {
+			_, err := fmt.Fprintf(ctx, `%d`, i.Get())
+			return err
+		}
+	})
+
+	tw.RegisterCompilePtrFn(register, func(typ reflect.Type) tw.WalkPtrFn[*strings.Builder] {
+		return func(ctx *strings.Builder, p tw.Ptr[*strings.Builder]) error {
+			ctx.WriteString("ptr(")
+			if p.IsNil() {
+				ctx.WriteString("nil")
+			} else {
+				err := p.Walk(ctx)
+				if err != nil {
+					return err
+				}
+			}
+			ctx.WriteRune(')')
+			return nil
+		}
+	})
+
+	tw.RegisterCompileInterfaceFn(register, func(typ reflect.Type) tw.WalkInterfaceFn[*strings.Builder] {
+		return func(ctx *strings.Builder, i tw.Interface[*strings.Builder]) error {
+			ctx.WriteString(typ.String())
+			ctx.WriteRune('(')
+			if i.IsNil() {
+				ctx.WriteString("nil")
+			} else {
+				err := i.Walk(ctx)
+				if err != nil {
+					return err
+				}
+			}
+			ctx.WriteRune(')')
+			return nil
+		}
+	})
+
+	tw.RegisterCompileMapFn(register, func(typ reflect.Type) tw.WalkMapFn[*strings.Builder] {
+		return func(ctx *strings.Builder, m tw.Map[*strings.Builder]) error {
+			if m.IsNil() {
+				ctx.WriteString("null")
+				return nil
+			}
+			ctx.WriteRune('{')
+			iter := m.Iter()
+			i := 0
+			for iter.Next() {
+				if i > 0 {
+					ctx.WriteRune(',')
+				}
+				e := iter.Entry()
+				err := e.Key().Walk(ctx)
+				if err != nil {
+					return err
+				}
+				ctx.WriteRune(':')
+				err = e.Value().Walk(ctx)
+				if err != nil {
+					return err
+				}
+				i++
+			}
+			ctx.WriteRune('}')
+			return nil
+		}
+	})
+
+	walker := tw.NewWalker[*strings.Builder](register)
+
+	t.Run("map[string]interface{}", func(t *testing.T) {
+		typeFn, err := tw.TypeFnFor[map[string]interface{}](walker)
+		require.NoError(t, err)
+
+		testMap := map[string]interface{}{
+			"number": 42,
+			"text":   "hello",
+		}
+
+		var sb strings.Builder
+		err = walker.Walk(&sb, testMap)
+		require.NoError(t, err)
+		result := sb.String()
+		assert.Contains(t, result, `"number":interface {}(42)`)
+		assert.Contains(t, result, `"text":interface {}("hello")`)
+
+		sb.Reset()
+		err = typeFn(&sb, &testMap)
+		require.NoError(t, err)
+		result2 := sb.String()
+		assert.Contains(t, result2, `"number":interface {}(42)`)
+		assert.Contains(t, result2, `"text":interface {}("hello")`)
+	})
+
+	t.Run("map[interface{}]string", func(t *testing.T) {
+		typeFn, err := tw.TypeFnFor[map[interface{}]string](walker)
+		require.NoError(t, err)
+
+		testMap := map[interface{}]string{
+			42:      "forty-two",
+			"hello": "world",
+		}
+
+		var sb strings.Builder
+		err = walker.Walk(&sb, testMap)
+		require.NoError(t, err)
+		result := sb.String()
+		assert.Contains(t, result, `interface {}(42):"forty-two"`)
+		assert.Contains(t, result, `interface {}("hello"):"world"`)
+
+		sb.Reset()
+		err = typeFn(&sb, &testMap)
+		require.NoError(t, err)
+		result2 := sb.String()
+		assert.Contains(t, result2, `interface {}(42):"forty-two"`)
+		assert.Contains(t, result2, `interface {}("hello"):"world"`)
+	})
+
+	t.Run("map[interface{}]interface{}", func(t *testing.T) {
+		typeFn, err := tw.TypeFnFor[map[interface{}]interface{}](walker)
+		require.NoError(t, err)
+
+		testMap := map[interface{}]interface{}{
+			42:      "forty-two",
+			"hello": 123,
+		}
+
+		var sb strings.Builder
+		err = walker.Walk(&sb, testMap)
+		require.NoError(t, err)
+		result := sb.String()
+		assert.Contains(t, result, `interface {}(42):interface {}("forty-two")`)
+		assert.Contains(t, result, `interface {}("hello"):interface {}(123)`)
+
+		sb.Reset()
+		err = typeFn(&sb, &testMap)
+		require.NoError(t, err)
+		result2 := sb.String()
+		assert.Contains(t, result2, `interface {}(42):interface {}("forty-two")`)
+		assert.Contains(t, result2, `interface {}("hello"):interface {}(123)`)
+	})
+
+	t.Run("map[stringer]stringer}", func(t *testing.T) {
+		typeFn, err := tw.TypeFnFor[map[fmt.Stringer]fmt.Stringer](walker)
+		require.NoError(t, err)
+
+		testMap := map[fmt.Stringer]fmt.Stringer{
+			IntWrapper(42):         ptr(IntPtrWrapper(24)),
+			StringWrapper("hello"): ptr(StringPtrWrapper("world")),
+		}
+
+		var sb strings.Builder
+		err = walker.Walk(&sb, testMap)
+		require.NoError(t, err)
+		result := sb.String()
+		assert.Contains(t, result, `fmt.Stringer("hello"):fmt.Stringer(ptr("world"))`)
+		assert.Contains(t, result, `fmt.Stringer(42):fmt.Stringer(ptr(24))`)
+
+		sb.Reset()
+		err = typeFn(&sb, &testMap)
+		require.NoError(t, err)
+		result = sb.String()
+		assert.Contains(t, result, `fmt.Stringer("hello"):fmt.Stringer(ptr("world"))`)
+		assert.Contains(t, result, `fmt.Stringer(42):fmt.Stringer(ptr(24))`)
+	})
+
+	// Must be at the end because it registers a new function.
+	t.Run("map[interface{}]stringer-exact", func(t *testing.T) {
+		tw.RegisterTypeFn(register, func(ctx *strings.Builder, s tw.Arg[fmt.Stringer]) error {
+			_, _ = fmt.Fprintf(ctx, "fmt.Stringer(%q)", s.Get().String())
+			return nil
+		})
+		walker := tw.NewWalker(register)
+
+		typeFn, err := tw.TypeFnFor[map[fmt.Stringer]fmt.Stringer](walker)
+		require.NoError(t, err)
+
+		testMap := map[fmt.Stringer]fmt.Stringer{
+			IntWrapper(42):         ptr(IntPtrWrapper(24)),
+			StringWrapper("hello"): ptr(StringPtrWrapper("world")),
+		}
+
+		var sb strings.Builder
+		err = walker.Walk(&sb, testMap)
+		require.NoError(t, err)
+		result := sb.String()
+		assert.Contains(t, result, `fmt.Stringer("hello"):fmt.Stringer("world")`)
+		assert.Contains(t, result, `fmt.Stringer("42"):fmt.Stringer("24")`)
+
+		sb.Reset()
+		err = typeFn(&sb, &testMap)
+		require.NoError(t, err)
+		result = sb.String()
+		assert.Contains(t, result, `fmt.Stringer("hello"):fmt.Stringer("world")`)
+		assert.Contains(t, result, `fmt.Stringer("42"):fmt.Stringer("24")`)
+	})
+}
+
 func TestRegisterCompileInterfaceFn(t *testing.T) {
 
 	type myAny any

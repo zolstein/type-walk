@@ -9,10 +9,15 @@ import (
 type arg struct {
 	p       unsafe.Pointer
 	canAddr bool
+	// If directPtr is true, the arg represents a pointer type, and p is the value itself, not a pointer to the value.
+	directPtr bool
+	// If wrongAny is true, the arg represents an interface, and we have a pointer to an `any`, which might not be the
+	// correct interface type.
+	wrongAny bool
 }
 
 func (a arg) canSet() bool {
-	return a.canAddr
+	return a.canAddr && !a.directPtr && !a.wrongAny
 }
 
 // Arg represents a value of a known type.
@@ -27,12 +32,26 @@ func (a Arg[T]) CanSet() bool {
 
 // Get returns the underlying value.
 func (a Arg[T]) Get() T {
-	return *(*T)(a.arg.p)
+	if a.arg.directPtr {
+		// We have the value directly (for pointer types in interfaces)
+		// a.arg.p IS the T value (when T is a pointer type)
+		return *(*T)(unsafe.Pointer(&a.arg.p))
+	} else if a.arg.wrongAny {
+		return (*(*any)(a.arg.p)).(T)
+	} else {
+		// Normal case: we have a pointer to the value
+		return *(*T)(a.arg.p)
+	}
 }
 
 // Set sets the underlying value. The arg must be settable.
 func (a Arg[T]) Set(value T) {
-	*(*T)(a.arg.p) = value
+	if !a.CanSet() {
+		panic("Set called on a value that's not settable.")
+	} else {
+		// Normal case: we have a pointer to the value
+		*(*T)(a.arg.p) = value
+	}
 }
 
 type Bool = Arg[bool]
@@ -66,10 +85,16 @@ type typeFnEntry[Ctx any] struct {
 	fn walkFn[Ctx]
 }
 
+type ifaceConvertFnEntry struct {
+	t  g_reflect.Type
+	fn ifaceConvertFn
+}
+
 // Register stores a set of WalkFns used to walk specific types, and functions to compile WalkFns for kinds of types.
 type Register[Ctx any] struct {
-	typeFns    []typeFnEntry[Ctx]
-	compileFns [numKind]unsafe.Pointer
+	typeFns         []typeFnEntry[Ctx]
+	compileFns      [numKind]unsafe.Pointer
+	ifaceConvertFns []ifaceConvertFnEntry
 }
 
 // NewRegister creates a new register.
@@ -83,6 +108,22 @@ func RegisterTypeFn[Ctx any, In any](register *Register[Ctx], fn WalkFn[Ctx, In]
 	_, fp := g_reflect.TypeAndPtrOf(fn)
 	castFn := *(*walkFn[Ctx])(unsafe.Pointer(&fp))
 	register.typeFns = append(register.typeFns, typeFnEntry[Ctx]{t: inType, fn: castFn})
+
+	// When a map contains values of non-any interface types, we can only get at them using reflection, converted to
+	// any values. Normally, we don't need to be able to return an interface as a specific value, since the calling code
+	// will have no way to get it except by converting back to any values, but if they register a WalkFn for that specific
+	// type we need to be able to convert it back. Unless there's an API I missed or don't understand, that requires
+	// actually assigning a variable of that type, which we can only do here where we have access to In as a type
+	// parameter. So we construct this function here, and use it during walking.
+	if inType.Kind() == reflect.Interface {
+		register.ifaceConvertFns = append(register.ifaceConvertFns, ifaceConvertFnEntry{
+			t: inType,
+			fn: func(a any) unsafe.Pointer {
+				conv := a.(In)
+				return unsafe.Pointer(&conv)
+			},
+		})
+	}
 }
 
 // RegisterCompileBoolFn registers a compile function for types of kind Bool.
