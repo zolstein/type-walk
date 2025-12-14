@@ -6,6 +6,8 @@ import (
 	"unsafe"
 )
 
+type noCast[T any] [0]T
+
 type arg struct {
 	p       unsafe.Pointer
 	canAddr bool
@@ -22,6 +24,7 @@ func (a arg) canSet() bool {
 
 // Arg represents a value of a known type.
 type Arg[T any] struct {
+	_ noCast[T] // noCast[T] prevents conversion of Arg[X] -> Arg[Y].
 	arg
 }
 
