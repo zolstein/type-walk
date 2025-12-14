@@ -44,7 +44,7 @@ func TypeFnFor[In any, Ctx any](w *Walker[Ctx]) (TypeFn[Ctx, In], error) {
 
 func argFor[T any](ptr *T) Arg[T] {
 	return Arg[T]{
-		arg{
+		arg: arg{
 			p: unsafe.Pointer(ptr),
 			// canAddr is true because we're coming directly through a pointer.
 			canAddr: true,
