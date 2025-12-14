@@ -43,10 +43,29 @@ func TestRegisterTypeFn(t *testing.T) {
 	registerTypeFnHelper(t, ptr(123))
 	registerTypeFnHelper(t, map[string]int{"abc": 123})
 	registerTypeFnHelper(t, []int{1, 2, 3})
+	registerTypeFnHelper(t, [...]int{})
+	registerTypeFnHelper(t, [...]int{123})
 	registerTypeFnHelper(t, [...]int{1, 2, 3})
+	registerTypeFnHelper(t, [...]*int{})
+	registerTypeFnHelper(t, [...]*int{ptr(123)})
+	registerTypeFnHelper(t, [...]*int{ptr(123), ptr(456), ptr(789)})
 	registerTypeFnHelper(t, make(chan int))
 	registerTypeFnHelper(t, (func(int) error)(nil))
+	registerTypeFnHelper(t, struct{}{})
 	registerTypeFnHelper(t, struct{ a int }{a: 123})
+	registerTypeFnHelper(t, struct{ a *int }{a: ptr(123)})
+	registerTypeFnHelper(t, struct {
+		a int
+		b int
+	}{a: 123, b: 456})
+	registerTypeFnHelper(t, struct {
+		a *int
+		b *int
+	}{a: ptr(123), b: ptr(456)})
+	registerTypeFnHelper(t, struct {
+		a *int
+		b int
+	}{a: ptr(123), b: 456})
 
 	// Context types
 	registerCtxTypeFnHelper[struct{}](t)

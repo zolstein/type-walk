@@ -103,19 +103,34 @@ func walk[Ctx any](fnSrc fnSrc[Ctx], ctx Ctx, in any) error {
 	arg := arg{
 		p:         p,
 		canAddr:   reflect.ValueOf(in).CanAddr(),
-		directPtr: ptrTypes[t.Kind()],
+		directPtr: isDirectIface(t),
 	}
 	return (*fn)(ctx, arg)
 }
 
 type fnSrc[Ctx any] func(t g_reflect.Type) (*walkFn[Ctx], error)
 
-var ptrTypes = [numKind]bool{
-	g_reflect.Ptr:           true,
-	g_reflect.UnsafePointer: true,
-	g_reflect.Map:           true,
-	g_reflect.Chan:          true,
-	g_reflect.Func:          true,
+var kindOffset uintptr
+
+const indirFlag = 1 << 5
+
+func init() {
+	kindField := reflect.TypeOf(reflect.TypeOf(struct{}{})).Elem().Field(0).Type.Field(6)
+	if kindField.Name != "Kind_" {
+		panic("Field 'Kind_' for reflect.Type not found.")
+	}
+	if kt := kindField.Type.Kind(); kt != reflect.Uint8 {
+		panic("Field 'Kind_' for reflect.Type is not uint.")
+	}
+	kindOffset = kindField.Offset
+}
+
+func isDirectIface(t g_reflect.Type) bool {
+	tp := unsafe.Pointer(t)
+	kp := unsafe.Add(tp, kindOffset)
+	rawKind := *(*uint8)(kp)
+	res := rawKind&indirFlag != 0
+	return res
 }
 
 // StructFieldRegister stores information about which fields to walk within a struct.
@@ -189,7 +204,13 @@ func (s Struct[Ctx]) Field(idx int) StructField[Ctx] {
 
 // Interface returns the underlying value as an interface.
 func (s Struct[Ctx]) Interface() any {
-	return g_reflect.NewAt(s.meta.typ, s.arg.p).Elem().Interface()
+	var ptr unsafe.Pointer
+	if s.arg.directPtr {
+		ptr = unsafe.Pointer(&s.arg.p)
+	} else {
+		ptr = s.arg.p
+	}
+	return g_reflect.NewAt(s.meta.typ, ptr).Elem().Interface()
 }
 
 // StructField represents the field of a struct.
@@ -215,7 +236,7 @@ type StructField[Ctx any] struct {
 //	    }
 //	}
 func (f StructField[Ctx]) IsValid() bool {
-	return f.arg.p != nil
+	return f.arg.directPtr || f.arg.p != nil
 }
 
 // Walk walks the StructField. The StructField must be valid.
@@ -256,7 +277,8 @@ func (a Array[Ctx]) Elem(idx int) ArrayElem[Ctx] {
 	elemArg := arg{
 		p: unsafe.Add(a.arg.p, a.meta.elemSize*uintptr(idx)),
 		// An element of an array is addressable iff the array is addressable.
-		canAddr: a.arg.canAddr,
+		canAddr:   a.arg.canAddr,
+		directPtr: a.arg.directPtr,
 	}
 	return ArrayElem[Ctx]{
 		meta: a.meta,
@@ -266,7 +288,13 @@ func (a Array[Ctx]) Elem(idx int) ArrayElem[Ctx] {
 
 // Interface returns the underlying value as an interface.
 func (a Array[Ctx]) Interface() any {
-	return g_reflect.NewAt(a.meta.typ, a.arg.p).Elem().Interface()
+	var ptr unsafe.Pointer
+	if a.arg.directPtr {
+		ptr = unsafe.Pointer(&a.arg.p)
+	} else {
+		ptr = a.arg.p
+	}
+	return g_reflect.NewAt(a.meta.typ, ptr).Elem().Interface()
 }
 
 // ArrayElem represents an element of an array.
@@ -531,7 +559,7 @@ func (m MapKey[Ctx]) Walk(ctx Ctx) error {
 		a = arg{
 			p:         ptr,
 			canAddr:   false,
-			directPtr: ptrTypes[kind],
+			directPtr: isDirectIface(m.meta.typ.Key()),
 		}
 	}
 
@@ -571,7 +599,7 @@ func (m MapValue[Ctx]) Walk(ctx Ctx) error {
 		a = arg{
 			p:         ptr,
 			canAddr:   false,
-			directPtr: ptrTypes[kind],
+			directPtr: isDirectIface(m.meta.typ.Elem()),
 		}
 	}
 
